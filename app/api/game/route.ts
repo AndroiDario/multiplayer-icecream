@@ -18,7 +18,7 @@ import {
   priceTiers,
   products,
   publicResearchData,
-  QUARTER_BUDGET,
+  STARTING_CASH,
   researchCost,
   researchOptions,
   TOTAL_QUARTERS,
@@ -343,8 +343,9 @@ async function purchaseResearch(
   }
 
   const spent = purchases.reduce((sum, purchase) => sum + purchase.cost, 0);
-  if (spent + cost > QUARTER_BUDGET) {
-    return { error: "La spesa in ricerche non può superare il budget del trimestre." };
+  const cash = STARTING_CASH + player.cumulativeProfit;
+  if (spent + cost > cash) {
+    return { error: "La spesa in ricerche supera la cassa disponibile." };
   }
 
   await db.insert(researchPurchases).values({
@@ -381,7 +382,8 @@ async function submitDecision(
     (sum, purchase) => sum + purchase.cost,
     0
   );
-  const validated = validateDecision(payload ?? {}, researchSpend);
+  const cash = STARTING_CASH + player.cumulativeProfit;
+  const validated = validateDecision(payload ?? {}, researchSpend, cash);
 
   if ("error" in validated) {
     return { error: validated.error };
@@ -588,7 +590,7 @@ async function getRoomState(
       status: room.status,
       currentQuarter: room.currentQuarter,
       totalQuarters: TOTAL_QUARTERS,
-      quarterBudget: QUARTER_BUDGET,
+      startingCash: STARTING_CASH,
     },
     isHost,
     currentPlayer: player
@@ -596,11 +598,13 @@ async function getRoomState(
           id: player.id,
           nickname: player.nickname,
           token: player.token,
+          cash: STARTING_CASH + player.cumulativeProfit,
         }
       : null,
     players: roomPlayers.map((item) => ({
       id: item.id,
       nickname: item.nickname,
+      cash: STARTING_CASH + item.cumulativeProfit,
       cumulativeRevenue: item.cumulativeRevenue,
       cumulativeProfit: item.cumulativeProfit,
       averageSatisfaction:
@@ -612,10 +616,11 @@ async function getRoomState(
       .map((item) => ({
         id: item.id,
         nickname: item.nickname,
+        cash: STARTING_CASH + item.cumulativeProfit,
         cumulativeRevenue: item.cumulativeRevenue,
         cumulativeProfit: item.cumulativeProfit,
       }))
-      .sort((a, b) => b.cumulativeRevenue - a.cumulativeRevenue),
+      .sort((a, b) => b.cash - a.cash),
     submittedPlayerIds,
     submittedCount: submittedPlayerIds.length,
     playerDecision,

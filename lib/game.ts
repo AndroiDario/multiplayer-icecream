@@ -1,6 +1,8 @@
 export const MAX_PLAYERS = 10;
 export const TOTAL_QUARTERS = 12;
-export const QUARTER_BUDGET = 9000;
+// Capitale iniziale di ogni squadra. La cassa poi cambia ogni trimestre del
+// profitto (ricavi − costi). Unica leva di bilanciamento del gioco.
+export const STARTING_CASH = 30000;
 
 export const products = [
   {
@@ -256,7 +258,8 @@ export function buildMarketSnapshot(seed: number, quarter: number) {
 
 export function validateDecision(
   decision: Partial<QuarterDecisionInput>,
-  researchSpend: number
+  researchSpend: number,
+  availableCash: number
 ) {
   const product = products.find((item) => item.key === decision.product)?.key;
   const priceTier = priceTiers.find((item) => item.key === decision.priceTier)?.key;
@@ -270,8 +273,8 @@ export function validateDecision(
     return { error: "Scegli prodotto, prezzo e luogo prima di inviare." };
   }
 
-  if (adSpend + researchSpend > QUARTER_BUDGET) {
-    return { error: "Questa scelta supera il budget del trimestre." };
+  if (adSpend + researchSpend > availableCash) {
+    return { error: "Pubblicità e ricerche superano la cassa disponibile." };
   }
 
   return {

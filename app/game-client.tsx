@@ -9,13 +9,14 @@ type ApiState = {
     status: "lobby" | "active" | "complete";
     currentQuarter: number;
     totalQuarters: number;
-    quarterBudget: number;
+    startingCash: number;
   };
   isHost: boolean;
-  currentPlayer: null | { id: string; nickname: string; token: string };
+  currentPlayer: null | { id: string; nickname: string; token: string; cash: number };
   players: Array<{
     id: string;
     nickname: string;
+    cash: number;
     cumulativeRevenue: number;
     cumulativeProfit: number;
     averageSatisfaction: number;
@@ -23,6 +24,7 @@ type ApiState = {
   leaderboard: Array<{
     id: string;
     nickname: string;
+    cash: number;
     cumulativeRevenue: number;
     cumulativeProfit: number;
   }>;
@@ -144,6 +146,12 @@ const DISTRICT_LABELS: Record<string, string> = {
   station: "Stazione",
   oldtown: "Città vecchia",
 };
+const RESEARCH_LABELS: Record<string, string> = {
+  traffic: "Mappa traffico per quartiere",
+  segments: "Preferenze dei segmenti",
+  channels: "Previsione sui canali",
+  competitors: "Benchmark concorrenti",
+};
 const SEASON_IT: Record<string, string> = {
   Spring: "Primavera",
   Summer: "Estate",
@@ -191,6 +199,9 @@ function priceLabel(key: string, fallback: string) {
 }
 function districtLabel(key: string, fallback: string) {
   return DISTRICT_LABELS[key] ?? fallback;
+}
+function researchLabel(key: string, fallback: string) {
+  return RESEARCH_LABELS[key] ?? fallback;
 }
 function quarterLabel(quarter: number) {
   const q = Math.max(1, quarter);
@@ -305,8 +316,12 @@ export default function GameClient() {
   const adSpend =
     decision.googleBudget + decision.metaBudget + decision.influencerBudget;
   const researchSpend = state?.researchSpend ?? 0;
-  const remainingBudget =
-    (state?.room.quarterBudget ?? 9000) - adSpend - researchSpend;
+  const availableCash =
+    state?.currentPlayer?.cash ?? state?.room.startingCash ?? 30000;
+  const selectedRent =
+    state?.options.districts.find((d) => d.key === decision.district)?.rent ?? 0;
+  const remainingCash = availableCash - adSpend - researchSpend;
+  const projectedCash = remainingCash - selectedRent;
   const isSubmitted = Boolean(state?.playerDecision);
 
   function resetSession() {
@@ -326,10 +341,17 @@ export default function GameClient() {
       <header className="topbar">
         <div>
           <p className="eyebrow">Simulatore di marketing per la classe</p>
-          <h1>Ice Cream Empire</h1>
+          <h1>
+            <span className="logo-emoji">🍦</span> Ice Cream Empire
+          </h1>
         </div>
         <div className="top-actions">
-          {roomCode ? <span className="room-pill">Stanza {roomCode}</span> : null}
+          {mode === "player" && state?.currentPlayer ? (
+            <span className={`cash-pill ${availableCash < 0 ? "danger" : ""}`}>
+              💰 {money(availableCash)}
+            </span>
+          ) : null}
+          {roomCode ? <span className="room-pill">🎟 {roomCode}</span> : null}
           <button className="ghost-button" onClick={resetSession} type="button">
             Nuova sessione
           </button>
@@ -457,6 +479,7 @@ export default function GameClient() {
             <MarketBoard state={state} />
           ) : (
             <div className="empty-board">
+              <div className="empty-hero" aria-hidden="true">🍦🍨🍧</div>
               <h2>Gestisci il mercato del gelato per 3 anni, in 12 trimestri.</h2>
               <p>
                 Le squadre decidono prodotto, prezzo, luogo e promozione mentre la
@@ -477,7 +500,11 @@ export default function GameClient() {
                   decision={decision}
                   setDecision={setDecision}
                   adSpend={adSpend}
-                  remainingBudget={remainingBudget}
+                  availableCash={availableCash}
+                  researchSpend={researchSpend}
+                  selectedRent={selectedRent}
+                  remainingCash={remainingCash}
+                  projectedCash={projectedCash}
                   isSubmitted={isSubmitted}
                   busy={busy}
                   purchaseResearch={(researchType) =>
@@ -527,7 +554,7 @@ function NextStepBanner({
   const status = state.room.status;
   const total = state.players.length;
   const submitted = state.submittedCount;
-  const budget = money(state.room.quarterBudget);
+  const cash = money(state.currentPlayer?.cash ?? state.room.startingCash);
   const leader = state.leaderboard[0];
 
   let eyebrow = "Cosa fare adesso";
@@ -557,8 +584,8 @@ function NextStepBanner({
       title = "Partita conclusa 🎉";
       body = leader ? (
         <>
-          Vince <strong>{leader.nickname}</strong> con {money(leader.cumulativeRevenue)}{" "}
-          di ricavi. La classifica completa è a destra.
+          Vince <strong>{leader.nickname}</strong> con {money(leader.cash)}{" "}
+          in cassa. La classifica completa è a destra.
         </>
       ) : (
         "La partita è finita. Trovi la classifica a destra."
@@ -573,8 +600,8 @@ function NextStepBanner({
       title = `Sei in gioco come ${state.currentPlayer.nickname}`;
       body = (
         <>
-          In attesa che il professore avvii il primo trimestre. Ogni trimestre avrai{" "}
-          <strong>{budget}</strong> da investire in pubblicità e ricerche di mercato.
+          In attesa che il professore avvii il primo trimestre. Parti con{" "}
+          <strong>{cash}</strong> di capitale, da investire in pubblicità e ricerche.
           Preparati a scegliere prodotto, prezzo, luogo e promozione.
         </>
       );
@@ -591,7 +618,7 @@ function NextStepBanner({
         title = `${quarterLabel(state.room.currentQuarter)}: tocca a te`;
         body = (
           <>
-            Hai <strong>{budget}</strong> da investire questo trimestre. Nel pannello
+            Hai <strong>{cash}</strong> in cassa da investire questo trimestre. Nel pannello
             a destra: <strong>1)</strong> compra ricerche se vuoi ·{" "}
             <strong>2)</strong> imposta le 4P e i budget pubblicitari ·{" "}
             <strong>3)</strong> premi «Invia trimestre».
@@ -621,12 +648,14 @@ function HowToPlay() {
       <div>
         <p>
           <strong>Obiettivo:</strong> gestisci una gelateria per 12 trimestri (3
-          anni). Vince la squadra con più <strong>ricavi totali</strong>.
+          anni). Vince la squadra con più <strong>cassa</strong> a fine partita.
         </p>
         <p>
-          <strong>Ogni trimestre</strong> hai <strong>9.000 €</strong> da investire
-          in pubblicità (Google, Meta, Influencer) e in ricerche di mercato. Il
-          budget si rinnova ogni trimestre: non è una cassa che si svuota.
+          <strong>Cassa:</strong> ogni squadra parte con <strong>30.000 €</strong> di
+          capitale, ben in evidenza. Ogni trimestre la cassa{" "}
+          <strong>cambia del profitto</strong> (ricavi − costi: pubblicità, ricerche,
+          affitto, costo del venduto). Puoi investire solo ciò che hai in cassa: spendi
+          bene per non finire in rosso!
         </p>
         <p>
           <strong>Le 4 leve (4P):</strong> Prodotto, Prezzo, Luogo (il quartiere
@@ -733,7 +762,7 @@ function CityMap({
       <div className="board-header">
         <div>
           <p className="eyebrow">Leva: Luogo (Place)</p>
-          <h2>Mappa della domanda in città</h2>
+          <h2>🗺️ Mappa della domanda in città</h2>
         </div>
         {state ? (
           <span className="event-chip">
@@ -885,7 +914,7 @@ function Leaderboard({ state }: { state: ApiState }) {
     <section className="score-panel">
       <div className="panel-heading">
         <p className="eyebrow">Condizione di vittoria</p>
-        <h2>Classifica ricavi</h2>
+        <h2>🍨 Classifica cassa</h2>
       </div>
       <div className="leaderboard-list">
         {state.leaderboard.length ? (
@@ -893,7 +922,7 @@ function Leaderboard({ state }: { state: ApiState }) {
             <div className="leader-row" key={player.id}>
               <span>{index + 1}</span>
               <strong>{player.nickname}</strong>
-              <em>{money(player.cumulativeRevenue)}</em>
+              <em className={player.cash < 0 ? "danger" : ""}>{money(player.cash)}</em>
             </div>
           ))
         ) : (
@@ -909,7 +938,11 @@ function DecisionPanel({
   decision,
   setDecision,
   adSpend,
-  remainingBudget,
+  availableCash,
+  researchSpend,
+  selectedRent,
+  remainingCash,
+  projectedCash,
   isSubmitted,
   busy,
   purchaseResearch,
@@ -919,28 +952,41 @@ function DecisionPanel({
   decision: Decision;
   setDecision: (decision: Decision) => void;
   adSpend: number;
-  remainingBudget: number;
+  availableCash: number;
+  researchSpend: number;
+  selectedRent: number;
+  remainingCash: number;
+  projectedCash: number;
   isSubmitted: boolean;
   busy: boolean;
   purchaseResearch: (researchType: string) => void;
   submit: () => void;
 }) {
+  const [pendingResearch, setPendingResearch] = useState<string | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
+  const pending = pendingResearch
+    ? state.options.researchOptions.find((o) => o.key === pendingResearch) ?? null
+    : null;
   return (
     <section className="decision-panel">
       <div className="panel-heading">
-        <p className="eyebrow">Le tue 4P</p>
+        <p className="eyebrow">🧩 Le tue 4P</p>
         <h2>{isSubmitted ? "Inviato ✓" : "Piano del trimestre"}</h2>
       </div>
 
       <div className="budget-strip">
-        <span>Budget rimasto questo trimestre</span>
-        <strong className={remainingBudget < 0 ? "danger" : ""}>
-          {money(remainingBudget)}
+        <span>💰 Cassa disponibile</span>
+        <strong className={availableCash < 0 ? "danger" : ""}>
+          {money(availableCash)}
         </strong>
         <small>
-          Pubblicità {money(adSpend)} + ricerche {money(state.researchSpend)} su{" "}
-          {money(state.room.quarterBudget)}. Si rinnova ogni trimestre; la
-          classifica premia i ricavi totali.
+          Pubblicità {money(adSpend)} · ricerche {money(researchSpend)} · affitto{" "}
+          {money(selectedRent)}
+          <br />
+          Cassa proiettata (prima dei ricavi):{" "}
+          <strong className={projectedCash < 0 ? "danger" : ""}>
+            {money(projectedCash)}
+          </strong>
         </small>
       </div>
 
@@ -978,16 +1024,19 @@ function DecisionPanel({
         <Slider
           label="Google Ads"
           value={decision.googleBudget}
+          max={availableCash}
           onChange={(googleBudget) => setDecision({ ...decision, googleBudget })}
         />
         <Slider
           label="Meta Ads"
           value={decision.metaBudget}
+          max={availableCash}
           onChange={(metaBudget) => setDecision({ ...decision, metaBudget })}
         />
         <Slider
           label="Influencer"
           value={decision.influencerBudget}
+          max={availableCash}
           onChange={(influencerBudget) =>
             setDecision({ ...decision, influencerBudget })
           }
@@ -995,31 +1044,116 @@ function DecisionPanel({
       </fieldset>
 
       <div className="research-shop">
-        <h3>Ricerche di mercato</h3>
+        <h3>🔎 Ricerche di mercato</h3>
+        {pending ? (
+          <div className="confirm-box">
+            <p>
+              Confermi la spesa di <strong>{money(pending.cost)}</strong> per «
+              {researchLabel(pending.key, pending.label)}»?
+            </p>
+            <p className="confirm-sub">
+              Cassa proiettata dopo l&apos;acquisto:{" "}
+              <strong className={projectedCash - pending.cost < 0 ? "danger" : ""}>
+                {money(projectedCash - pending.cost)}
+              </strong>
+            </p>
+            <div className="confirm-actions">
+              <button
+                className="primary-button"
+                disabled={busy}
+                onClick={() => {
+                  purchaseResearch(pending.key);
+                  setPendingResearch(null);
+                }}
+                type="button"
+              >
+                Conferma spesa
+              </button>
+              <button
+                className="ghost-button"
+                onClick={() => setPendingResearch(null)}
+                type="button"
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        ) : null}
         {state.options.researchOptions.map((research) => {
           const bought = state.purchasedResearch.includes(research.key);
           return (
             <button
               disabled={bought || isSubmitted || busy}
               key={research.key}
-              onClick={() => purchaseResearch(research.key)}
+              onClick={() => setPendingResearch(research.key)}
               type="button"
             >
-              <span>{research.label}</span>
+              <span>{researchLabel(research.key, research.label)}</span>
               <small>{bought ? "Sbloccata ✓" : money(research.cost)}</small>
             </button>
           );
         })}
       </div>
 
-      <button
-        className="primary-button"
-        disabled={busy || isSubmitted || remainingBudget < 0}
-        onClick={submit}
-        type="button"
-      >
-        {isSubmitted ? "Scelte inviate" : "Invia trimestre"}
-      </button>
+      {showSummary ? (
+        <div className="confirm-box summary">
+          <h3>Riepilogo del trimestre</h3>
+          <ul>
+            <li>
+              Prodotto: <strong>{productLabel(decision.product, decision.product)}</strong>
+            </li>
+            <li>
+              Prezzo: <strong>{priceLabel(decision.priceTier, decision.priceTier)}</strong>
+            </li>
+            <li>
+              Location:{" "}
+              <strong>{districtLabel(decision.district, decision.district)}</strong>{" "}
+              (affitto {money(selectedRent)})
+            </li>
+            <li>
+              Pubblicità: Google {money(decision.googleBudget)} · Meta{" "}
+              {money(decision.metaBudget)} · Influencer{" "}
+              {money(decision.influencerBudget)}
+            </li>
+            <li>Ricerche acquistate: {money(researchSpend)}</li>
+            <li>
+              Cassa proiettata (prima dei ricavi):{" "}
+              <strong className={projectedCash < 0 ? "danger" : ""}>
+                {money(projectedCash)}
+              </strong>
+            </li>
+          </ul>
+          <div className="confirm-actions">
+            <button
+              className="primary-button"
+              disabled={busy}
+              onClick={() => {
+                setShowSummary(false);
+                submit();
+              }}
+              type="button"
+            >
+              Conferma e invia
+            </button>
+            <button
+              className="ghost-button"
+              onClick={() => setShowSummary(false)}
+              type="button"
+            >
+              Modifica
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          className="primary-button"
+          disabled={busy || isSubmitted || remainingCash < 0}
+          onClick={() => setShowSummary(true)}
+          type="button"
+        >
+          {isSubmitted ? "Scelte inviate" : "Invia trimestre"}
+        </button>
+      )}
     </section>
   );
 }
@@ -1027,12 +1161,15 @@ function DecisionPanel({
 function Slider({
   label,
   value,
+  max,
   onChange,
 }: {
   label: string;
   value: number;
+  max: number;
   onChange: (value: number) => void;
 }) {
+  const sliderMax = Math.max(1000, Math.round(max));
   return (
     <label>
       <span className="slider-label">
@@ -1042,9 +1179,9 @@ function Slider({
       <input
         type="range"
         min="0"
-        max="9000"
+        max={sliderMax}
         step="100"
-        value={value}
+        value={Math.min(value, sliderMax)}
         onChange={(event) => onChange(Number(event.target.value))}
       />
     </label>

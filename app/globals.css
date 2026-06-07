@@ -31,13 +31,19 @@ html {
 
 body {
   margin: 0;
+  /* "zuccherini" pastello sparsi su carta panna */
   background:
-    linear-gradient(90deg, rgba(79, 157, 114, 0.08) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(79, 126, 168, 0.07) 1px, transparent 1px),
+    radial-gradient(circle at 12% 18%, rgba(217, 93, 103, 0.13) 0 6px, transparent 7px),
+    radial-gradient(circle at 82% 12%, rgba(240, 195, 74, 0.16) 0 6px, transparent 7px),
+    radial-gradient(circle at 88% 66%, rgba(79, 157, 114, 0.13) 0 6px, transparent 7px),
+    radial-gradient(circle at 26% 80%, rgba(79, 126, 168, 0.12) 0 6px, transparent 7px),
+    radial-gradient(circle at 54% 44%, rgba(240, 195, 74, 0.10) 0 5px, transparent 6px),
     var(--paper);
-  background-size: 34px 34px;
+  background-size:
+    330px 330px, 300px 300px, 360px 360px, 320px 320px, 270px 270px, auto;
   color: var(--ink);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 button,
@@ -83,6 +89,14 @@ fieldset:disabled {
 .topbar h1 {
   font-size: 2.25rem;
   font-weight: 820;
+  background: linear-gradient(96deg, var(--strawberry) 0%, #e8853f 40%, var(--mint-strong) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.topbar h1 .logo-emoji {
+  -webkit-text-fill-color: initial;
 }
 
 .eyebrow {
@@ -125,6 +139,23 @@ fieldset:disabled {
   background: #fff4c5;
   border-color: #e2ba3e;
   color: #533a00;
+}
+
+.cash-pill {
+  background: var(--mint-strong);
+  border: 1px solid #3c8059;
+  border-radius: 999px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 0.84rem;
+  font-weight: 850;
+  padding: 9px 12px;
+  white-space: nowrap;
+}
+
+.cash-pill.danger {
+  background: var(--strawberry);
+  border-color: #b8434d;
 }
 
 .workspace {
@@ -262,15 +293,29 @@ button:focus-visible {
 }
 
 .primary-button {
-  background: var(--mint-strong);
+  background: linear-gradient(135deg, #5fb585, #3c8059);
   border: 1px solid #3c8059;
   color: #fff;
+  box-shadow: 0 4px 12px rgba(60, 128, 89, 0.22);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+
+.primary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 9px 20px rgba(60, 128, 89, 0.32);
+  filter: saturate(1.06);
 }
 
 .ghost-button {
   background: rgba(255, 255, 255, 0.82);
   border: 1px solid var(--line);
   color: var(--ink);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.ghost-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(33, 48, 38, 0.1);
 }
 
 .quiet-note,
@@ -445,6 +490,14 @@ button:focus-visible {
   min-height: 54px;
   padding: 8px;
   text-align: left;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.district-grid button:hover:not(:disabled),
+.research-shop button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--mint-strong);
+  box-shadow: 0 6px 14px rgba(33, 48, 38, 0.1);
 }
 
 .district-grid button.active {
@@ -582,6 +635,24 @@ input[type="range"] {
   min-height: 150px;
 }
 
+.empty-hero {
+  font-size: 3rem;
+  letter-spacing: 8px;
+  line-height: 1;
+  margin-bottom: 10px;
+  animation: floaty 3.4s ease-in-out infinite;
+}
+
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
 .empty-board p,
 .leaderboard-placeholder p {
   color: var(--muted);
@@ -652,6 +723,48 @@ input[type="range"] {
   color: var(--muted);
   font-size: 0.78rem;
   line-height: 1.35;
+}
+
+.confirm-box {
+  background: #fff9dc;
+  border: 1px solid #e2ba3e;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  margin: 4px 0;
+  padding: 12px;
+}
+
+.confirm-box h3 {
+  font-size: 0.98rem;
+  margin: 0;
+}
+
+.confirm-box p,
+.confirm-box ul {
+  font-size: 0.86rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.confirm-box ul {
+  display: grid;
+  gap: 3px;
+  padding-left: 16px;
+}
+
+.confirm-sub {
+  color: #6b5a1e;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.confirm-actions .primary-button,
+.confirm-actions .ghost-button {
+  flex: 1;
 }
 
 @media (max-width: 1180px) {
