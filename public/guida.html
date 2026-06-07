@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ice Cream Empire — Come si gioca</title>
+<style>
+  :root{
+    --ink:#18202f; --muted:#667085; --line:#d9e2dc; --paper:#fbfaf4;
+    --mint:#dff3e7; --mint-strong:#4f9d72; --strawberry:#d95d67; --lemon:#f0c34a; --blue:#4f7ea8;
+  }
+  @page{ size:A4 landscape; margin:0; }
+  *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  html,body{ margin:0; }
+  body{
+    font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    color:var(--ink);
+    background:
+      linear-gradient(90deg, rgba(79,157,114,.08) 1px, transparent 1px),
+      linear-gradient(0deg, rgba(79,126,168,.07) 1px, transparent 1px),
+      var(--paper);
+    background-size:30px 30px;
+  }
+  .page{
+    width:297mm; min-height:209mm;
+    padding:13mm 14mm 10mm;
+    margin:0 auto;
+    display:flex; flex-direction:column;
+  }
+  header{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; border-bottom:3px solid var(--ink); padding-bottom:10px; margin-bottom:14px; }
+  .brand .eyebrow{ color:var(--strawberry); font-weight:800; letter-spacing:.08em; text-transform:uppercase; font-size:12px; margin:0 0 2px; }
+  .brand h1{ margin:0; font-size:30px; font-weight:850; line-height:1; }
+  .brand h1 small{ font-weight:800; color:var(--mint-strong); font-size:18px; }
+  .goalbox{ text-align:right; font-size:13.5px; color:var(--ink); max-width:330px; line-height:1.35; }
+  .goalbox b{ color:var(--strawberry); }
+  .grid{ display:grid; grid-template-columns:repeat(3,1fr); grid-auto-rows:1fr; gap:11px; flex:1; }
+  .card{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 13px 13px; box-shadow:0 8px 22px rgba(33,48,38,.07); position:relative; overflow:hidden; }
+  .card::before{ content:""; position:absolute; left:0; top:0; height:5px; width:100%; background:var(--mint-strong); }
+  .card.c2::before{ background:var(--lemon); }
+  .card.c3::before{ background:var(--strawberry); }
+  .card.c4::before{ background:var(--blue); }
+  .card.c5::before{ background:var(--mint-strong); }
+  .card.c6::before{ background:var(--ink); }
+  .card h2{ margin:4px 0 7px; font-size:16.5px; display:flex; align-items:center; gap:8px; }
+  .card h2 .ico{ font-size:19px; }
+  .card p, .card ul{ margin:0; font-size:13px; line-height:1.45; color:#2a3344; }
+  .card ul{ padding-left:16px; }
+  .card li{ margin:2px 0; }
+  .card .big{ font-size:26px; font-weight:850; color:var(--mint-strong); line-height:1; margin:2px 0 4px; }
+  .steps{ counter-reset:step; list-style:none; padding:0; margin:0; }
+  .steps li{ position:relative; padding-left:24px; margin:4px 0; font-size:12.7px; line-height:1.35; }
+  .steps li::before{ counter-increment:step; content:counter(step); position:absolute; left:0; top:1px; width:17px; height:17px; background:var(--ink); color:#fff; border-radius:50%; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+  .pill{ display:inline-block; background:var(--ink); color:#fff; border-radius:999px; padding:3px 9px; font-weight:800; font-size:12.5px; }
+  .url{ color:var(--blue); font-weight:800; }
+  footer{ margin-top:12px; background:#fff4c5; border:1px solid #e2ba3e; border-radius:10px; padding:9px 13px; font-size:12.7px; color:#4a3a14; line-height:1.4; }
+  footer b{ color:#8a5a00; }
+  .four-p{ display:grid; grid-template-columns:1fr 1fr; gap:4px 10px; margin-top:2px; }
+  .four-p span{ font-size:12.7px; }
+  .four-p b{ color:var(--strawberry); }
+</style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="brand">
+        <p class="eyebrow">Simulatore di marketing — guida per le squadre</p>
+        <h1>🍦 Ice Cream Empire <small>· Come si gioca</small></h1>
+      </div>
+      <div class="goalbox">
+        Gestisci una gelateria in concorrenza con le altre squadre.<br>
+        <b>Vince chi accumula più ricavi</b> in 12 trimestri (3 anni).
+      </div>
+    </header>
+
+    <div class="grid">
+      <div class="card c1">
+        <h2><span class="ico">🎯</span> Obiettivo</h2>
+        <p>La partita dura <b>12 trimestri = 3 anni</b>. Ogni trimestre prendi decisioni di marketing per attirare più clienti delle altre squadre.</p>
+        <p style="margin-top:7px;">Vince la squadra con i <b>ricavi totali</b> più alti nella classifica.</p>
+      </div>
+
+      <div class="card c2">
+        <h2><span class="ico">💶</span> Il tuo budget</h2>
+        <div class="big">9.000 € / trimestre</div>
+        <p>Da investire in <b>pubblicità</b> e <b>ricerche di mercato</b>. Si rinnova ogni trimestre: non è una cassa che si svuota.</p>
+      </div>
+
+      <div class="card c3">
+        <h2><span class="ico">🧩</span> Le 4 leve (4P)</h2>
+        <div class="four-p">
+          <span><b>Prodotto</b> — tipo di gelato</span>
+          <span><b>Prezzo</b> — fascia di prezzo</span>
+          <span><b>Luogo</b> — quartiere città</span>
+          <span><b>Promozione</b> — budget canali</span>
+        </div>
+        <p style="margin-top:7px;">Promozione = quanto spendi su <b>Google</b>, <b>Meta</b> e <b>Influencer</b>.</p>
+      </div>
+
+      <div class="card c4">
+        <h2><span class="ico">🔎</span> Ricerche di mercato</h2>
+        <p>A pagamento (dal tuo budget). Ti svelano informazioni utili a decidere meglio:</p>
+        <ul>
+          <li>traffico di ogni quartiere</li>
+          <li>preferenze dei segmenti di clienti</li>
+          <li>resa attesa dei canali pubblicitari</li>
+          <li>mosse e ricavi dei concorrenti</li>
+        </ul>
+      </div>
+
+      <div class="card c5">
+        <h2><span class="ico">🔁</span> Come si svolge un turno</h2>
+        <ol class="steps">
+          <li>Il <b>professore avvia</b> il trimestre</li>
+          <li>Leggi il mercato: <b>stagione, evento, domanda</b></li>
+          <li>(Facoltativo) compra <b>ricerche</b></li>
+          <li>Imposta le <b>4P</b> e i <b>budget pubblicitari</b></li>
+          <li>Premi <span class="pill">Invia trimestre</span></li>
+          <li>Il prof <b>avanza</b> → vedi i <b>risultati</b>. Si ripete.</li>
+        </ol>
+      </div>
+
+      <div class="card c6">
+        <h2><span class="ico">▶️</span> Come entrare</h2>
+        <ul>
+          <li>Apri <span class="url">multiplayer-icecream.dario-6b7.workers.dev</span></li>
+          <li>Scegli il ruolo <span class="pill">Squadra</span></li>
+          <li>Inserisci il <b>codice</b> dato dal professore</li>
+          <li>Scegli un <b>nome squadra</b> ed entra</li>
+        </ul>
+      </div>
+    </div>
+
+    <footer>
+      💡 <b>Consiglio:</b> guarda sempre <b>stagione</b> ed <b>evento</b> del trimestre — cambiano la domanda e premiano canali o quartieri diversi. Evita di affollare lo stesso quartiere dei rivali: troppa concorrenza nello stesso posto riduce le vendite di tutti.
+    </footer>
+  </div>
+</body>
+</html>
