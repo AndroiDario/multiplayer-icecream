@@ -81,7 +81,7 @@ function routeError(error: unknown) {
     combined.includes('from "rooms"') ||
     combined.includes("SQLITE_ERROR")
   ) {
-    return "The game database is not ready yet. Run `npm run db:generate`, then deploy with the generated D1 migration.";
+    return "Il database del gioco non è ancora pronto. Riprova tra qualche secondo.";
   }
 
   return message;
@@ -96,7 +96,7 @@ export async function GET(request: Request) {
     const hostToken = url.searchParams.get("hostToken") ?? undefined;
 
     if (!roomCode) {
-      return json({ error: "roomCode is required" }, 400);
+      return json({ error: "Serve il codice della stanza." }, 400);
     }
 
     return json(await getRoomState(roomCode, playerToken, hostToken));
@@ -142,7 +142,7 @@ export async function POST(request: Request) {
       return json(await advanceQuarter(payload.roomCode, payload.hostToken));
     }
 
-    return json({ error: "Unknown action" }, 400);
+    return json({ error: "Azione non riconosciuta." }, 400);
   } catch (error) {
     return json({ error: routeError(error) }, 500);
   }
@@ -290,11 +290,11 @@ async function joinRoom(roomCode?: string, nickname?: string) {
     .where(eq(players.roomId, room.id));
 
   if (count.length >= MAX_PLAYERS) {
-    return { error: "This room already has 10 players." };
+    return { error: "Questa stanza ha già 10 squadre." };
   }
 
   if (room.status !== "lobby") {
-    return { error: "This room has already started." };
+    return { error: "La partita in questa stanza è già iniziata." };
   }
 
   const playerToken = id("player");
@@ -325,16 +325,16 @@ async function purchaseResearch(
   const cost = researchCost(researchType ?? "");
 
   if (room.status !== "active" || quarter < 1 || quarter > TOTAL_QUARTERS) {
-    return { error: "Research can only be bought during an active quarter." };
+    return { error: "Le ricerche si comprano solo durante un trimestre attivo." };
   }
 
   if (cost === null || !researchOptions.some((item) => item.key === researchType)) {
-    return { error: "Choose a valid research option." };
+    return { error: "Scegli una ricerca valida." };
   }
 
   const submitted = await decisionForPlayer(room.id, player.id, quarter);
   if (submitted) {
-    return { error: "This player has already submitted for the quarter." };
+    return { error: "Questa squadra ha già inviato le scelte per il trimestre." };
   }
 
   const purchases = await researchForPlayer(room.id, player.id, quarter);
@@ -344,7 +344,7 @@ async function purchaseResearch(
 
   const spent = purchases.reduce((sum, purchase) => sum + purchase.cost, 0);
   if (spent + cost > QUARTER_BUDGET) {
-    return { error: "Research spending cannot exceed the quarterly budget." };
+    return { error: "La spesa in ricerche non può superare il budget del trimestre." };
   }
 
   await db.insert(researchPurchases).values({
@@ -369,12 +369,12 @@ async function submitDecision(
   const quarter = room.currentQuarter;
 
   if (room.status !== "active" || quarter < 1 || quarter > TOTAL_QUARTERS) {
-    return { error: "Decisions can only be submitted during an active quarter." };
+    return { error: "Le scelte si inviano solo durante un trimestre attivo." };
   }
 
   const existing = await decisionForPlayer(room.id, player.id, quarter);
   if (existing) {
-    return { error: "This player has already submitted for the quarter." };
+    return { error: "Questa squadra ha già inviato le scelte per il trimestre." };
   }
 
   const researchSpend = (await researchForPlayer(room.id, player.id, quarter)).reduce(
@@ -404,7 +404,7 @@ async function advanceQuarter(roomCode?: string, hostToken?: string) {
   const room = await requireRoom(roomCode);
 
   if (room.hostToken !== hostToken) {
-    return { error: "Only the instructor can advance the game." };
+    return { error: "Solo il professore può far avanzare la partita." };
   }
 
   if (room.status === "complete") {
@@ -414,7 +414,7 @@ async function advanceQuarter(roomCode?: string, hostToken?: string) {
   if (room.status === "lobby") {
     const roomPlayers = await getRoomPlayers(room.id);
     if (roomPlayers.length < 1) {
-      return { error: "Add at least one player before starting." };
+      return { error: "Aggiungi almeno una squadra prima di iniziare." };
     }
 
     await ensureMarketSnapshot(room, 1);
@@ -427,7 +427,7 @@ async function advanceQuarter(roomCode?: string, hostToken?: string) {
 
   const quarter = room.currentQuarter;
   if (quarter < 1 || quarter > TOTAL_QUARTERS) {
-    return { error: "This room is not on an active quarter." };
+    return { error: "Questa stanza non è in un trimestre attivo." };
   }
 
   const existingResults = await db
@@ -642,7 +642,7 @@ async function requireRoom(roomCode?: string) {
   const code = normalizeCode(roomCode);
 
   if (!code) {
-    throw new Error("Room code is required.");
+    throw new Error("Serve il codice della stanza.");
   }
 
   const [room] = await db
@@ -652,7 +652,7 @@ async function requireRoom(roomCode?: string) {
     .limit(1);
 
   if (!room) {
-    throw new Error("Room not found.");
+    throw new Error("Stanza non trovata.");
   }
 
   return room;
@@ -662,7 +662,7 @@ async function requirePlayer(roomId: string, token?: string) {
   const player = await optionalPlayer(roomId, token);
 
   if (!player) {
-    throw new Error("Player token is invalid.");
+    throw new Error("Identificativo della squadra non valido.");
   }
 
   return player;

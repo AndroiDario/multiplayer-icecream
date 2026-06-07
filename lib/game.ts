@@ -267,11 +267,11 @@ export function validateDecision(
   const adSpend = googleBudget + metaBudget + influencerBudget;
 
   if (!product || !priceTier || !district) {
-    return { error: "Choose a product, price, and district before submitting." };
+    return { error: "Scegli prodotto, prezzo e luogo prima di inviare." };
   }
 
   if (adSpend + researchSpend > QUARTER_BUDGET) {
-    return { error: "This decision spends more than the quarterly budget." };
+    return { error: "Questa scelta supera il budget del trimestre." };
   }
 
   return {

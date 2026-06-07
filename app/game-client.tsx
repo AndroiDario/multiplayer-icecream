@@ -124,6 +124,79 @@ const starterDecision: Decision = {
   influencerBudget: 1200,
 };
 
+// Etichette in italiano per i dati che arrivano dal motore (lib/game.ts resta in inglese).
+const PRODUCT_LABELS: Record<string, string> = {
+  classic: "Classico",
+  premium: "Premium",
+  novelty: "Novità",
+  healthy: "Salutare",
+};
+const PRICE_LABELS: Record<string, string> = {
+  low: "Economico",
+  standard: "Standard",
+  premium: "Premium",
+  luxury: "Lusso",
+};
+const DISTRICT_LABELS: Record<string, string> = {
+  downtown: "Centro",
+  campus: "Campus universitario",
+  park: "Parco sul fiume",
+  station: "Stazione",
+  oldtown: "Città vecchia",
+};
+const SEASON_IT: Record<string, string> = {
+  Spring: "Primavera",
+  Summer: "Estate",
+  Autumn: "Autunno",
+  Winter: "Inverno",
+};
+const SEASON_NOTE_IT: Record<string, string> = {
+  Spring: "il clima mite aumenta le visite a parco e campus",
+  Summer: "turisti e traffico all'aperto al massimo",
+  Autumn: "gli studenti tornano ma il traffico per svago cala",
+  Winter: "il freddo riduce gli acquisti d'impulso",
+};
+const EVENT_IT: Record<string, { name: string; note: string }> = {
+  Heatwave: {
+    name: "Ondata di caldo",
+    note: "Le alte temperature premiano buona disponibilità e ampia copertura.",
+  },
+  "Rainy Month": {
+    name: "Mese piovoso",
+    note: "Il maltempo sposta la domanda verso i pendolari e la ricerca online.",
+  },
+  "City Festival": {
+    name: "Festival cittadino",
+    note: "I turisti affollano il centro storico e rispondono alla scoperta sui social.",
+  },
+  "Inflation Pressure": {
+    name: "Pressione inflazionistica",
+    note: "I clienti diventano sensibili al prezzo: le offerte economiche piacciono di più.",
+  },
+  "Tourism Spike": {
+    name: "Picco di turismo",
+    note: "Il flusso di visitatori rende più attraente il posizionamento premium e di novità.",
+  },
+  "Social Trend": {
+    name: "Trend sui social",
+    note: "I contenuti virali sui gusti aumentano la resa di Meta e Influencer.",
+  },
+};
+
+function productLabel(key: string, fallback: string) {
+  return PRODUCT_LABELS[key] ?? fallback;
+}
+function priceLabel(key: string, fallback: string) {
+  return PRICE_LABELS[key] ?? fallback;
+}
+function districtLabel(key: string, fallback: string) {
+  return DISTRICT_LABELS[key] ?? fallback;
+}
+function quarterLabel(quarter: number) {
+  const q = Math.max(1, quarter);
+  return `Anno ${Math.ceil(q / 4)} · Q${((q - 1) % 4) + 1}`;
+}
+
 function readStoredSession() {
   if (typeof window === "undefined") {
     return {
@@ -151,7 +224,7 @@ export default function GameClient() {
   const [mode, setMode] = useState<"instructor" | "player">(
     initialSession.mode
   );
-  const [instructorName, setInstructorName] = useState("Professor");
+  const [instructorName, setInstructorName] = useState("Professore");
   const [nickname, setNickname] = useState("");
   const [joinCode, setJoinCode] = useState(initialSession.roomCode);
   const [roomCode, setRoomCode] = useState(initialSession.roomCode);
@@ -252,47 +325,47 @@ export default function GameClient() {
     <main className="game-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">Marketing mix classroom simulator</p>
+          <p className="eyebrow">Simulatore di marketing per la classe</p>
           <h1>Ice Cream Empire</h1>
         </div>
         <div className="top-actions">
-          {roomCode ? <span className="room-pill">Room {roomCode}</span> : null}
+          {roomCode ? <span className="room-pill">Stanza {roomCode}</span> : null}
           <button className="ghost-button" onClick={resetSession} type="button">
-            New session
+            Nuova sessione
           </button>
         </div>
       </header>
 
       <section className="workspace">
         <aside className="side-panel">
-          <div className="segmented" aria-label="Choose role">
+          <div className="segmented" aria-label="Scegli il ruolo">
             <button
               className={mode === "instructor" ? "active" : ""}
               onClick={() => setMode("instructor")}
               type="button"
             >
-              Instructor
+              Professore
             </button>
             <button
               className={mode === "player" ? "active" : ""}
               onClick={() => setMode("player")}
               type="button"
             >
-              Player
+              Squadra
             </button>
           </div>
 
           {mode === "instructor" ? (
             state?.isHost ? (
               <div className="session-badge">
-                <span>Hosting room</span>
+                <span>Stai conducendo</span>
                 <strong>{state.room.hostName}</strong>
-                <small>Share code {state.room.code} with the class.</small>
+                <small>Condividi il codice {state.room.code} con la classe.</small>
               </div>
             ) : (
               <div className="control-group">
                 <label>
-                  Instructor name
+                  Nome del professore
                   <input
                     value={instructorName}
                     onChange={(event) => setInstructorName(event.target.value)}
@@ -308,20 +381,20 @@ export default function GameClient() {
                   }
                   type="button"
                 >
-                  Create room
+                  Crea stanza
                 </button>
               </div>
             )
           ) : state?.currentPlayer ? (
             <div className="session-badge">
-              <span>Playing as</span>
+              <span>Stai giocando come</span>
               <strong>{state.currentPlayer.nickname}</strong>
-              <small>Room {state.room.code}</small>
+              <small>Stanza {state.room.code}</small>
             </div>
           ) : (
             <div className="control-group">
               <label>
-                Room code
+                Codice stanza
                 <input
                   value={joinCode}
                   onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
@@ -329,11 +402,11 @@ export default function GameClient() {
                 />
               </label>
               <label>
-                Nickname
+                Nome squadra
                 <input
                   value={nickname}
                   onChange={(event) => setNickname(event.target.value)}
-                  placeholder="Team Gelato"
+                  placeholder="Es. Gelato Team"
                 />
               </label>
               <button
@@ -348,7 +421,7 @@ export default function GameClient() {
                 }
                 type="button"
               >
-                Join room
+                Entra nella stanza
               </button>
             </div>
           )}
@@ -370,21 +443,25 @@ export default function GameClient() {
             />
           ) : (
             <div className="quiet-note">
-              Create a room, share the code, and start once the class has joined.
+              Crea una stanza, condividi il codice e avvia la partita quando la
+              classe è entrata.
             </div>
           )}
         </aside>
 
         <section className="main-stage">
+          {state ? <NextStepBanner state={state} mode={mode} /> : null}
+          <HowToPlay />
           <CityMap state={state} decision={decision} setDecision={setDecision} />
           {state ? (
             <MarketBoard state={state} />
           ) : (
             <div className="empty-board">
-              <h2>Run a three-year ice cream market in 12 quarters.</h2>
+              <h2>Gestisci il mercato del gelato per 3 anni, in 12 trimestri.</h2>
               <p>
-                Students decide product, price, place, and promotion while the
-                city changes season, traffic, events, and channel response.
+                Le squadre decidono prodotto, prezzo, luogo e promozione mentre la
+                città cambia stagione, traffico, eventi e resa dei canali
+                pubblicitari.
               </p>
             </div>
           )}
@@ -422,18 +499,151 @@ export default function GameClient() {
                 />
               ) : null}
               {currentPlayerResult ? (
-                <ResultCard result={currentPlayerResult} title="Your last result" />
+                <ResultCard
+                  result={currentPlayerResult}
+                  title="Il tuo ultimo risultato"
+                />
               ) : null}
             </>
           ) : (
             <div className="leaderboard-placeholder">
-              <h2>Teaching loop</h2>
-              <p>Research, choose, submit, compare, discuss, repeat.</p>
+              <h2>Come funziona</h2>
+              <p>Ricerca, scegli, invia, confronta, discuti, ripeti.</p>
             </div>
           )}
         </aside>
       </section>
     </main>
+  );
+}
+
+function NextStepBanner({
+  state,
+  mode,
+}: {
+  state: ApiState;
+  mode: "instructor" | "player";
+}) {
+  const status = state.room.status;
+  const total = state.players.length;
+  const submitted = state.submittedCount;
+  const budget = money(state.room.quarterBudget);
+  const leader = state.leaderboard[0];
+
+  let eyebrow = "Cosa fare adesso";
+  let title = "";
+  let body: React.ReactNode = "";
+
+  if (mode === "instructor") {
+    if (status === "lobby") {
+      title = "Sei tu a condurre la partita";
+      body = (
+        <>
+          Condividi il codice <strong>{state.room.code}</strong> con la classe.
+          Squadre entrate: <strong>{total}</strong>. Quando sono pronte, premi
+          «Avvia partita» nel pannello a sinistra.
+        </>
+      );
+    } else if (status === "active") {
+      title = `${quarterLabel(state.room.currentQuarter)} in corso`;
+      body = (
+        <>
+          Le squadre stanno decidendo: <strong>{submitted}/{total}</strong> hanno
+          inviato. Premi «Avanza trimestre» a sinistra per calcolare i risultati e
+          passare al trimestre successivo.
+        </>
+      );
+    } else {
+      title = "Partita conclusa 🎉";
+      body = leader ? (
+        <>
+          Vince <strong>{leader.nickname}</strong> con {money(leader.cumulativeRevenue)}{" "}
+          di ricavi. La classifica completa è a destra.
+        </>
+      ) : (
+        "La partita è finita. Trovi la classifica a destra."
+      );
+    }
+  } else {
+    if (!state.currentPlayer) {
+      title = "Entra in una stanza";
+      body =
+        "Inserisci il codice e il nome della tua squadra nel pannello a sinistra per unirti alla partita.";
+    } else if (status === "lobby") {
+      title = `Sei in gioco come ${state.currentPlayer.nickname}`;
+      body = (
+        <>
+          In attesa che il professore avvii il primo trimestre. Ogni trimestre avrai{" "}
+          <strong>{budget}</strong> da investire in pubblicità e ricerche di mercato.
+          Preparati a scegliere prodotto, prezzo, luogo e promozione.
+        </>
+      );
+    } else if (status === "active") {
+      if (state.playerDecision) {
+        title = "Scelte inviate ✓";
+        body = (
+          <>
+            <strong>{submitted}/{total}</strong> squadre pronte. Attendi che il
+            professore avanzi il trimestre per vedere i risultati.
+          </>
+        );
+      } else {
+        title = `${quarterLabel(state.room.currentQuarter)}: tocca a te`;
+        body = (
+          <>
+            Hai <strong>{budget}</strong> da investire questo trimestre. Nel pannello
+            a destra: <strong>1)</strong> compra ricerche se vuoi ·{" "}
+            <strong>2)</strong> imposta le 4P e i budget pubblicitari ·{" "}
+            <strong>3)</strong> premi «Invia trimestre».
+          </>
+        );
+      }
+    } else {
+      title = "Partita conclusa 🎉";
+      body =
+        "Guarda la classifica finale a destra e l'ultimo risultato della tua squadra.";
+    }
+  }
+
+  return (
+    <div className="next-step">
+      <p className="eyebrow">{eyebrow}</p>
+      <h2>{title}</h2>
+      <p>{body}</p>
+    </div>
+  );
+}
+
+function HowToPlay() {
+  return (
+    <details className="how-to-play">
+      <summary>📖 Come si gioca</summary>
+      <div>
+        <p>
+          <strong>Obiettivo:</strong> gestisci una gelateria per 12 trimestri (3
+          anni). Vince la squadra con più <strong>ricavi totali</strong>.
+        </p>
+        <p>
+          <strong>Ogni trimestre</strong> hai <strong>9.000 €</strong> da investire
+          in pubblicità (Google, Meta, Influencer) e in ricerche di mercato. Il
+          budget si rinnova ogni trimestre: non è una cassa che si svuota.
+        </p>
+        <p>
+          <strong>Le 4 leve (4P):</strong> Prodotto, Prezzo, Luogo (il quartiere
+          della città) e Promozione (quanto spendi su ciascun canale).
+        </p>
+        <p>
+          <strong>Ricerche di mercato:</strong> a pagamento, svelano dati su
+          traffico dei quartieri, segmenti di clienti, resa dei canali e mosse dei
+          concorrenti.
+        </p>
+        <p>
+          <strong>Come scorre il gioco:</strong> il professore avvia il trimestre →
+          ogni squadra sceglie e invia le sue mosse → il professore avanza → si
+          vedono i risultati → si ripete fino al 12° trimestre.
+        </p>
+      </div>
+    </details>
   );
 }
 
@@ -450,38 +660,51 @@ function RoomControls({
 }) {
   const statusLabel =
     state.room.status === "lobby"
-      ? "Lobby"
+      ? "In attesa"
       : state.room.status === "complete"
-        ? "Complete"
-        : `Year ${Math.ceil(state.room.currentQuarter / 4)} / Q${
-            ((state.room.currentQuarter - 1) % 4) + 1
-          }`;
+        ? "Conclusa"
+        : quarterLabel(state.room.currentQuarter);
+
+  const noPlayers = state.players.length === 0;
 
   return (
     <div className="room-status">
       <div className="metric-row">
-        <span>Status</span>
+        <span>Stato</span>
         <strong>{statusLabel}</strong>
       </div>
       <div className="metric-row">
-        <span>Players</span>
+        <span>Squadre</span>
         <strong>{state.players.length}/10</strong>
       </div>
       <div className="metric-row">
-        <span>Submitted</span>
+        <span>Inviati</span>
         <strong>
           {state.submittedCount}/{state.players.length}
         </strong>
       </div>
       {mode === "instructor" ? (
-        <button
-          className="primary-button"
-          disabled={busy || state.room.status === "complete"}
-          onClick={advance}
-          type="button"
-        >
-          {state.room.status === "lobby" ? "Start game" : "Advance quarter"}
-        </button>
+        <>
+          <button
+            className="primary-button"
+            disabled={busy || state.room.status === "complete"}
+            onClick={advance}
+            type="button"
+          >
+            {state.room.status === "lobby" ? "Avvia partita" : "Avanza trimestre"}
+          </button>
+          {state.room.status === "lobby" && noPlayers ? (
+            <small className="control-hint">
+              Serve almeno una squadra collegata per iniziare.
+            </small>
+          ) : null}
+          {state.room.status === "active" ? (
+            <small className="control-hint">
+              Puoi avanzare anche se non tutte le squadre hanno inviato: chi non
+              invia gioca con scelte di default.
+            </small>
+          ) : null}
+        </>
       ) : null}
     </div>
   );
@@ -497,11 +720,11 @@ function CityMap({
   setDecision: (decision: Decision) => void;
 }) {
   const districts = state?.options.districts ?? [
-    { key: "downtown", label: "Downtown", x: 48, y: 31, traffic: 1.2, rent: 980 },
+    { key: "downtown", label: "Centro", x: 48, y: 31, traffic: 1.2, rent: 980 },
     { key: "campus", label: "Campus", x: 24, y: 58, traffic: 1.05, rent: 620 },
-    { key: "park", label: "Riverside Park", x: 70, y: 62, traffic: 1.12, rent: 720 },
-    { key: "station", label: "Station", x: 76, y: 28, traffic: 1.18, rent: 840 },
-    { key: "oldtown", label: "Old Town", x: 36, y: 24, traffic: 0.94, rent: 690 },
+    { key: "park", label: "Parco sul fiume", x: 70, y: 62, traffic: 1.12, rent: 720 },
+    { key: "station", label: "Stazione", x: 76, y: 28, traffic: 1.18, rent: 840 },
+    { key: "oldtown", label: "Città vecchia", x: 36, y: 24, traffic: 0.94, rent: 690 },
   ];
   const traffic = state?.market.traffic;
 
@@ -509,14 +732,17 @@ function CityMap({
     <div className="city-board">
       <div className="board-header">
         <div>
-          <p className="eyebrow">Place decision</p>
-          <h2>City demand map</h2>
+          <p className="eyebrow">Leva: Luogo (Place)</p>
+          <h2>Mappa della domanda in città</h2>
         </div>
         {state ? (
-          <span className="event-chip">{state.market.baseline.event}</span>
+          <span className="event-chip">
+            {EVENT_IT[state.market.baseline.event]?.name ??
+              state.market.baseline.event}
+          </span>
         ) : null}
       </div>
-      <svg className="city-svg" viewBox="0 0 100 78" role="img" aria-label="City map">
+      <svg className="city-svg" viewBox="0 0 100 78" role="img" aria-label="Mappa della città">
         <path className="river" d="M4 68 C24 54 35 72 54 55 S78 46 96 54" />
         <path className="road" d="M12 18 L86 18 L88 62 L20 68 Z" />
         <path className="road" d="M23 8 L31 70" />
@@ -547,7 +773,7 @@ function CityMap({
             >
               <circle cx={district.x} cy={district.y} r={radius} />
               <text x={district.x} y={district.y + 13}>
-                {district.label}
+                {districtLabel(district.key, district.label)}
               </text>
             </g>
           );
@@ -561,8 +787,8 @@ function CityMap({
             onClick={() => setDecision({ ...decision, district: district.key })}
             type="button"
           >
-            <span>{district.label}</span>
-            <small>Rent ${district.rent}</small>
+            <span>{districtLabel(district.key, district.label)}</span>
+            <small>Affitto {money(district.rent)}</small>
           </button>
         ))}
       </div>
@@ -572,30 +798,33 @@ function CityMap({
 
 function MarketBoard({ state }: { state: ApiState }) {
   const baseline = state.market.baseline;
+  const season = SEASON_IT[baseline.season] ?? baseline.season;
+  const seasonNote = SEASON_NOTE_IT[baseline.season] ?? baseline.seasonNote;
+  const event = EVENT_IT[baseline.event];
 
   return (
     <div className="market-board">
       <div className="signal">
-        <span>Quarter</span>
+        <span>Trimestre</span>
         <strong>
-          Year {baseline.year}, Q{baseline.quarterOfYear}
+          Anno {baseline.year}, Q{baseline.quarterOfYear}
         </strong>
         <small>
-          {baseline.season}: {baseline.seasonNote}
+          {season}: {seasonNote}
         </small>
       </div>
       <div className="signal">
-        <span>External event</span>
-        <strong>{baseline.event}</strong>
-        <small>{baseline.eventNote}</small>
+        <span>Evento esterno</span>
+        <strong>{event?.name ?? baseline.event}</strong>
+        <small>{event?.note ?? baseline.eventNote}</small>
       </div>
       <div className="signal">
-        <span>Demand index</span>
+        <span>Indice di domanda</span>
         <strong>{Math.round(baseline.baseDemand * 100)}%</strong>
-        <small>Free market baseline for every team.</small>
+        <small>Base di mercato uguale per tutte le squadre.</small>
       </div>
       <div className="signal wide">
-        <span>Unlocked research</span>
+        <span>Ricerche sbloccate</span>
         <ResearchSummary state={state} />
       </div>
     </div>
@@ -610,7 +839,9 @@ function ResearchSummary({ state }: { state: ApiState }) {
     !state.market.segments
   ) {
     return (
-      <small>Buy research to reveal traffic, channel, segment, or competitor data.</small>
+      <small>
+        Compra ricerche per svelare traffico, canali, segmenti o concorrenti.
+      </small>
     );
   }
 
@@ -618,23 +849,28 @@ function ResearchSummary({ state }: { state: ApiState }) {
     <div className="research-summary">
       {state.market.traffic ? (
         <p>
-          Best traffic:{" "}
+          Traffico migliore:{" "}
           <strong>
-            {[...state.market.traffic].sort((a, b) => b.traffic - a.traffic)[0].label}
+            {(() => {
+              const best = [...state.market.traffic].sort(
+                (a, b) => b.traffic - a.traffic
+              )[0];
+              return districtLabel(best.key, best.label);
+            })()}
           </strong>
         </p>
       ) : null}
       {state.market.channels ? (
         <p>
-          Channel forecast: Google {pct(state.market.channels.google)}, Meta{" "}
+          Previsione canali: Google {pct(state.market.channels.google)}, Meta{" "}
           {pct(state.market.channels.meta)}, Influencer{" "}
           {pct(state.market.channels.influencer)}
         </p>
       ) : null}
-      {state.market.segments ? <p>Segment preferences unlocked.</p> : null}
+      {state.market.segments ? <p>Preferenze dei segmenti sbloccate.</p> : null}
       {state.market.competitors ? (
         <p>
-          Competitors visible:{" "}
+          Concorrenti visibili:{" "}
           {state.market.competitors
             .map((competitor) => competitor.nickname)
             .join(", ")}
@@ -648,8 +884,8 @@ function Leaderboard({ state }: { state: ApiState }) {
   return (
     <section className="score-panel">
       <div className="panel-heading">
-        <p className="eyebrow">Win condition</p>
-        <h2>Revenue leaderboard</h2>
+        <p className="eyebrow">Condizione di vittoria</p>
+        <h2>Classifica ricavi</h2>
       </div>
       <div className="leaderboard-list">
         {state.leaderboard.length ? (
@@ -661,7 +897,7 @@ function Leaderboard({ state }: { state: ApiState }) {
             </div>
           ))
         ) : (
-          <p className="muted">Waiting for players.</p>
+          <p className="muted">In attesa delle squadre.</p>
         )}
       </div>
     </section>
@@ -692,23 +928,25 @@ function DecisionPanel({
   return (
     <section className="decision-panel">
       <div className="panel-heading">
-        <p className="eyebrow">4P decision</p>
-        <h2>{isSubmitted ? "Submitted" : "Quarter plan"}</h2>
+        <p className="eyebrow">Le tue 4P</p>
+        <h2>{isSubmitted ? "Inviato ✓" : "Piano del trimestre"}</h2>
       </div>
 
       <div className="budget-strip">
-        <span>Budget left</span>
+        <span>Budget rimasto questo trimestre</span>
         <strong className={remainingBudget < 0 ? "danger" : ""}>
           {money(remainingBudget)}
         </strong>
         <small>
-          Ads {money(adSpend)} + research {money(state.researchSpend)}
+          Pubblicità {money(adSpend)} + ricerche {money(state.researchSpend)} su{" "}
+          {money(state.room.quarterBudget)}. Si rinnova ogni trimestre; la
+          classifica premia i ricavi totali.
         </small>
       </div>
 
       <fieldset disabled={isSubmitted || busy}>
         <label>
-          Product
+          Prodotto
           <select
             value={decision.product}
             onChange={(event) =>
@@ -717,13 +955,13 @@ function DecisionPanel({
           >
             {state.options.products.map((product) => (
               <option key={product.key} value={product.key}>
-                {product.label}
+                {productLabel(product.key, product.label)}
               </option>
             ))}
           </select>
         </label>
         <label>
-          Price
+          Prezzo
           <select
             value={decision.priceTier}
             onChange={(event) =>
@@ -732,7 +970,7 @@ function DecisionPanel({
           >
             {state.options.priceTiers.map((price) => (
               <option key={price.key} value={price.key}>
-                {price.label} (${price.price.toFixed(2)})
+                {priceLabel(price.key, price.label)} ({money(price.price)})
               </option>
             ))}
           </select>
@@ -757,7 +995,7 @@ function DecisionPanel({
       </fieldset>
 
       <div className="research-shop">
-        <h3>Market research</h3>
+        <h3>Ricerche di mercato</h3>
         {state.options.researchOptions.map((research) => {
           const bought = state.purchasedResearch.includes(research.key);
           return (
@@ -768,7 +1006,7 @@ function DecisionPanel({
               type="button"
             >
               <span>{research.label}</span>
-              <small>{bought ? "Unlocked" : money(research.cost)}</small>
+              <small>{bought ? "Sbloccata ✓" : money(research.cost)}</small>
             </button>
           );
         })}
@@ -780,7 +1018,7 @@ function DecisionPanel({
         onClick={submit}
         type="button"
       >
-        Submit quarter
+        {isSubmitted ? "Scelte inviate" : "Invia trimestre"}
       </button>
     </section>
   );
@@ -823,23 +1061,23 @@ function ResultCard({
   return (
     <section className="result-panel">
       <div className="panel-heading">
-        <p className="eyebrow">Feedback</p>
+        <p className="eyebrow">Risultato</p>
         <h2>{title}</h2>
       </div>
       <div className="metric-row">
-        <span>Revenue</span>
+        <span>Ricavi</span>
         <strong>{money(result.revenue)}</strong>
       </div>
       <div className="metric-row">
-        <span>Profit</span>
+        <span>Profitto</span>
         <strong>{money(result.profit)}</strong>
       </div>
       <div className="metric-row">
-        <span>Market share</span>
+        <span>Quota di mercato</span>
         <strong>{Math.round(result.marketShare * 100)}%</strong>
       </div>
       <div className="metric-row">
-        <span>Satisfaction</span>
+        <span>Soddisfazione</span>
         <strong>{Math.round(result.satisfaction)}%</strong>
       </div>
     </section>
@@ -847,9 +1085,9 @@ function ResultCard({
 }
 
 function money(value: number) {
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat("it-IT", {
     style: "currency",
-    currency: "USD",
+    currency: "EUR",
     maximumFractionDigits: 0,
   }).format(value);
 }

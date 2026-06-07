@@ -589,6 +589,71 @@ input[type="range"] {
   margin: 10px 0 0;
 }
 
+.next-step {
+  background: #fff4c5;
+  border: 1px solid #e2ba3e;
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.next-step .eyebrow {
+  color: #a06a00;
+  margin: 0;
+}
+
+.next-step h2 {
+  font-size: 1.16rem;
+  font-weight: 820;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.next-step p {
+  color: #4a3a14;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.how-to-play {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 4px 16px;
+}
+
+.how-to-play summary {
+  cursor: pointer;
+  font-weight: 850;
+  padding: 10px 0;
+}
+
+.how-to-play > div {
+  display: grid;
+  gap: 8px;
+  padding: 2px 0 12px;
+}
+
+.how-to-play p {
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.how-to-play strong {
+  color: var(--mint-strong);
+}
+
+.control-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 @media (max-width: 1180px) {
   .workspace {
     grid-template-columns: 260px minmax(420px, 1fr);
