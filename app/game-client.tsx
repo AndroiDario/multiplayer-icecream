@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  firstQuarterOfYear,
+  projectQuarter,
+  type QuarterDecisionInput,
+} from "@/lib/game";
 
 type ApiState = {
   room: {
@@ -35,6 +40,7 @@ type ApiState = {
   submittedPlayerIds: string[];
   submittedCount: number;
   playerDecision: null | Record<string, unknown>;
+  lockedDistrict: string | null;
   market: {
     baseline: {
       quarter: number;
@@ -57,7 +63,10 @@ type ApiState = {
           rent: number;
           mix: Record<string, number>;
         }>;
-    segments: null | Record<string, unknown>;
+    segments: null | {
+      productFit: Record<string, Record<string, number>>;
+      segmentPriceTolerance: Record<string, number>;
+    };
     channels: null | { google: number; meta: number; influencer: number };
     competitors:
       | null
@@ -66,7 +75,9 @@ type ApiState = {
           product?: string | null;
           priceTier?: string | null;
           district?: string | null;
+          districtKey?: string | null;
           revenue?: number | null;
+          fromPreviousQuarter?: boolean;
         }>;
   };
   purchasedResearch: string[];
@@ -185,6 +196,12 @@ const RESEARCH_LABELS: Record<string, string> = {
   segments: "Preferenze dei segmenti",
   channels: "Previsione sui canali",
   competitors: "Benchmark concorrenti",
+};
+const SEGMENT_LABELS: Record<string, string> = {
+  families: "Famiglie",
+  professionals: "Professionisti",
+  tourists: "Turisti",
+  students: "Studenti",
 };
 const SEASON_IT: Record<string, string> = {
   Spring: "Primavera",
@@ -489,13 +506,26 @@ export default function GameClient() {
     );
   }, [state]);
 
+  // In Q2–Q4 la location è bloccata sulla scelta di inizio anno. Invece di
+  // mutare lo stato locale (causerebbe render a cascata), derivo una decisione
+  // "effettiva" con il quartiere bloccato, usata per UI, previsione e invio.
+  const lockedDistrict = state?.lockedDistrict ?? null;
+  const effectiveDecision: Decision = useMemo(
+    () =>
+      lockedDistrict && decision.district !== lockedDistrict
+        ? { ...decision, district: lockedDistrict }
+        : decision,
+    [lockedDistrict, decision]
+  );
+
   const adSpend =
     decision.googleBudget + decision.metaBudget + decision.influencerBudget;
   const researchSpend = state?.researchSpend ?? 0;
   const availableCash =
     state?.currentPlayer?.cash ?? state?.room.startingCash ?? 30000;
   const selectedRent =
-    state?.options.districts.find((d) => d.key === decision.district)?.rent ?? 0;
+    state?.options.districts.find((d) => d.key === effectiveDecision.district)?.rent ??
+    0;
   const remainingCash = availableCash - adSpend - researchSpend;
   const projectedCash = remainingCash - selectedRent;
   const isSubmitted = Boolean(state?.playerDecision);
@@ -599,7 +629,7 @@ export default function GameClient() {
     autoSubmitKeyRef.current = activeDraftKey;
 
     const autoDecision = scaleDecisionForCash(
-      decision,
+      effectiveDecision,
       availableCash,
       researchSpend
     );
@@ -607,7 +637,7 @@ export default function GameClient() {
   }, [
     activeDraftKey,
     availableCash,
-    decision,
+    effectiveDecision,
     isSubmitted,
     mode,
     researchSpend,
@@ -774,7 +804,7 @@ export default function GameClient() {
             />
           ) : null}
           <HowToPlay />
-          <CityMap state={state} decision={decision} setDecision={setDecision} />
+          <CityMap state={state} decision={effectiveDecision} setDecision={setDecision} />
           {state ? (
             <MarketBoard state={state} />
           ) : (
@@ -797,7 +827,7 @@ export default function GameClient() {
               {mode === "player" && state.room.status === "active" ? (
                 <DecisionPanel
                   state={state}
-                  decision={decision}
+                  decision={effectiveDecision}
                   setDecision={setDecision}
                   adSpend={adSpend}
                   availableCash={availableCash}
@@ -816,7 +846,7 @@ export default function GameClient() {
                       researchType,
                     })
                   }
-                  submit={() => submitDecisionRequest(decision)}
+                  submit={() => submitDecisionRequest(effectiveDecision)}
                 />
               ) : null}
               {currentPlayerResult ? (
@@ -976,9 +1006,17 @@ function HowToPlay() {
           della città) e Promozione (quanto spendi su ciascun canale).
         </p>
         <p>
+          <strong>Luogo, una scelta annuale:</strong> la location si sceglie a{" "}
+          <strong>inizio anno (Q1)</strong> e si tiene per tutti e 4 i trimestri.
+          L&apos;affitto si paga <strong>ogni trimestre</strong>; potrai cambiare
+          quartiere solo all&apos;inizio dell&apos;anno successivo. Scegli con cura!
+        </p>
+        <p>
           <strong>Ricerche di mercato:</strong> a pagamento, svelano dati su
           traffico dei quartieri, segmenti di clienti, resa dei canali e mosse dei
-          concorrenti.
+          concorrenti. Ogni ricerca rende più precisa la{" "}
+          <strong>«Previsione del trimestre»</strong> (gelati, ricavi e profitto
+          attesi) che vedi mentre decidi: è lì che vedi il ritorno della spesa.
         </p>
         <p>
           <strong>Come scorre il gioco:</strong> il professore avvia il trimestre →
@@ -1063,6 +1101,30 @@ function RoomControls({
   );
 }
 
+const FALLBACK_DISTRICTS = [
+  { key: "downtown", label: "Centro", x: 48, y: 31, traffic: 1.2, rent: 980 },
+  { key: "campus", label: "Campus", x: 24, y: 58, traffic: 1.05, rent: 620 },
+  { key: "park", label: "Parco sul fiume", x: 70, y: 62, traffic: 1.12, rent: 720 },
+  { key: "station", label: "Stazione", x: 76, y: 28, traffic: 1.18, rent: 840 },
+  { key: "oldtown", label: "Città vecchia", x: 36, y: 24, traffic: 0.94, rent: 690 },
+];
+
+// Glifo illustrato per quartiere (emoji = nessun asset esterno da gestire).
+const DISTRICT_EMOJI: Record<string, string> = {
+  downtown: "🏙️",
+  campus: "🎓",
+  park: "🌳",
+  station: "🚉",
+  oldtown: "🏛️",
+};
+
+// Scala di domanda fredda→calda: blu (bassa) → verde → giallo → rosso (alta).
+function demandColor(normalized: number) {
+  const t = Math.max(0, Math.min(1, normalized));
+  const hue = 205 - t * 193;
+  return `hsl(${hue.toFixed(0)}, 72%, 58%)`;
+}
+
 function CityMap({
   state,
   decision,
@@ -1072,14 +1134,28 @@ function CityMap({
   decision: Decision;
   setDecision: (decision: Decision) => void;
 }) {
-  const districts = state?.options.districts ?? [
-    { key: "downtown", label: "Centro", x: 48, y: 31, traffic: 1.2, rent: 980 },
-    { key: "campus", label: "Campus", x: 24, y: 58, traffic: 1.05, rent: 620 },
-    { key: "park", label: "Parco sul fiume", x: 70, y: 62, traffic: 1.12, rent: 720 },
-    { key: "station", label: "Stazione", x: 76, y: 28, traffic: 1.18, rent: 840 },
-    { key: "oldtown", label: "Città vecchia", x: 36, y: 24, traffic: 0.94, rent: 690 },
-  ];
+  const districts = state?.options.districts ?? FALLBACK_DISTRICTS;
   const traffic = state?.market.traffic;
+  const baseDemand = state?.market.baseline.baseDemand ?? 1;
+  const isActive = state?.room.status === "active";
+  const lockedDistrict = state?.lockedDistrict ?? null;
+  const locked = Boolean(lockedDistrict);
+  const currentQuarter = state?.room.currentQuarter ?? 1;
+  const nextChangeQuarter = firstQuarterOfYear(currentQuarter) + 4;
+
+  const demandFor = (district: (typeof districts)[number]) => {
+    const revealed = traffic?.find((item) => item.key === district.key);
+    return baseDemand * (revealed?.traffic ?? district.traffic);
+  };
+  const demandValues = districts.map(demandFor);
+  const minDemand = Math.min(...demandValues);
+  const maxDemand = Math.max(...demandValues);
+  const demandSpan = Math.max(0.0001, maxDemand - minDemand);
+
+  const selectDistrict = (key: string) => {
+    if (locked) return;
+    setDecision({ ...decision, district: key });
+  };
 
   return (
     <div className="city-board">
@@ -1095,8 +1171,27 @@ function CityMap({
           </span>
         ) : null}
       </div>
-      <svg className="city-svg" viewBox="0 0 100 78" role="img" aria-label="Mappa della città">
-        <path className="river" d="M4 68 C24 54 35 72 54 55 S78 46 96 54" />
+
+      {state && isActive ? (
+        lockedDistrict ? (
+          <p className="map-note locked">
+            🔒 La location si sceglie a inizio anno e si mantiene per tutto l&apos;anno.
+            Quest&apos;anno sei a{" "}
+            <strong>{districtLabel(lockedDistrict, lockedDistrict)}</strong>: potrai
+            cambiarla dal prossimo anno ({quarterLabel(nextChangeQuarter)}).
+          </p>
+        ) : (
+          <p className="map-note">
+            📍 Scegli ora la location dell&apos;anno: la terrai per tutti e 4 i
+            trimestri. L&apos;affitto si paga ogni trimestre.
+          </p>
+        )
+      ) : null}
+
+      <svg className="city-svg" viewBox="0 0 100 80" role="img" aria-label="Mappa della città">
+        <ellipse className="zone zone-green" cx="64" cy="60" rx="26" ry="16" />
+        <ellipse className="zone zone-warm" cx="46" cy="28" rx="24" ry="15" />
+        <path className="river" d="M4 70 C24 56 35 74 54 57 S78 48 96 56" />
         <path className="road" d="M12 18 L86 18 L88 62 L20 68 Z" />
         <path className="road" d="M23 8 L31 70" />
         <path className="road" d="M54 10 L47 69" />
@@ -1113,37 +1208,83 @@ function CityMap({
         {districts.map((district) => {
           const revealed = traffic?.find((item) => item.key === district.key);
           const trafficValue = revealed?.traffic ?? district.traffic;
-          const radius = Math.max(4.6, Math.min(8.5, 4.8 + trafficValue * 2.2));
+          const radius = Math.max(5, Math.min(8.6, 5 + trafficValue * 2.1));
           const selected = decision.district === district.key;
+          const isLocked = locked && lockedDistrict === district.key;
+          const dimmed = locked && !isLocked;
+          const heat = demandColor((demandFor(district) - minDemand) / demandSpan);
 
           return (
             <g
-              className={`district-node ${selected ? "selected" : ""}`}
+              className={`district-node ${selected ? "selected" : ""} ${
+                dimmed ? "dimmed" : ""
+              } ${isLocked ? "locked" : ""}`}
               key={district.key}
-              onClick={() => setDecision({ ...decision, district: district.key })}
-              tabIndex={0}
+              onClick={() => selectDistrict(district.key)}
+              tabIndex={locked ? -1 : 0}
               role="button"
+              aria-disabled={dimmed}
             >
-              <circle cx={district.x} cy={district.y} r={radius} />
-              <text x={district.x} y={district.y + 13}>
+              <circle
+                className="node-disc"
+                cx={district.x}
+                cy={district.y}
+                r={radius}
+                style={{ fill: heat }}
+              />
+              <text
+                className="node-glyph"
+                x={district.x}
+                y={district.y}
+                style={{ fontSize: `${radius * 0.95}px` }}
+              >
+                {DISTRICT_EMOJI[district.key] ?? "📍"}
+              </text>
+              {isLocked ? (
+                <text className="node-lock" x={district.x + radius - 0.5} y={district.y - radius + 1}>
+                  🔒
+                </text>
+              ) : null}
+              <text className="node-label" x={district.x} y={district.y + radius + 4}>
                 {districtLabel(district.key, district.label)}
               </text>
             </g>
           );
         })}
       </svg>
+
+      <div className="map-legend">
+        <span className="legend-heat">
+          <small>Domanda</small>
+          <i className="legend-bar" aria-hidden="true" />
+          <small>bassa → alta</small>
+        </span>
+        <span className="legend-size">⬤ più grande = più traffico</span>
+      </div>
+
       <div className="district-grid">
-        {districts.map((district) => (
-          <button
-            className={decision.district === district.key ? "active" : ""}
-            key={district.key}
-            onClick={() => setDecision({ ...decision, district: district.key })}
-            type="button"
-          >
-            <span>{districtLabel(district.key, district.label)}</span>
-            <small>Affitto {money(district.rent)}</small>
-          </button>
-        ))}
+        {districts.map((district) => {
+          const isLocked = locked && lockedDistrict === district.key;
+          const dimmed = locked && !isLocked;
+          return (
+            <button
+              className={`${decision.district === district.key ? "active" : ""} ${
+                isLocked ? "locked" : ""
+              }`}
+              disabled={dimmed}
+              key={district.key}
+              onClick={() => selectDistrict(district.key)}
+              type="button"
+            >
+              <span>
+                {districtLabel(district.key, district.label)} {isLocked ? "🔒" : ""}
+              </span>
+              <small>
+                Affitto {money(district.rent)}/trim · {money(district.rent * 4)}/anno
+              </small>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -1185,12 +1326,9 @@ function MarketBoard({ state }: { state: ApiState }) {
 }
 
 function ResearchSummary({ state }: { state: ApiState }) {
-  if (
-    !state.market.traffic &&
-    !state.market.channels &&
-    !state.market.competitors &&
-    !state.market.segments
-  ) {
+  const { traffic, channels, segments, competitors } = state.market;
+
+  if (!traffic && !channels && !competitors && !segments) {
     return (
       <small>
         Compra ricerche per svelare traffico, canali, segmenti o concorrenti.
@@ -1198,36 +1336,149 @@ function ResearchSummary({ state }: { state: ApiState }) {
     );
   }
 
+  const channelEntries = channels
+    ? ([
+        ["Google", channels.google],
+        ["Meta", channels.meta],
+        ["Influencer", channels.influencer],
+      ] as const)
+    : null;
+  const bestChannel = channelEntries
+    ? [...channelEntries].sort((a, b) => b[1] - a[1])[0][0]
+    : null;
+  const competitorsWithData = competitors?.some((c) => c.product || c.district);
+
   return (
     <div className="research-summary">
-      {state.market.traffic ? (
-        <p>
-          Traffico migliore:{" "}
-          <strong>
-            {(() => {
-              const best = [...state.market.traffic].sort(
-                (a, b) => b.traffic - a.traffic
-              )[0];
-              return districtLabel(best.key, best.label);
-            })()}
-          </strong>
-        </p>
+      {traffic ? (
+        <div className="research-block">
+          <h4>Traffico per quartiere</h4>
+          <ul className="research-rank">
+            {[...traffic]
+              .sort((a, b) => b.traffic - a.traffic)
+              .map((district) => (
+                <li key={district.key}>
+                  <span>{districtLabel(district.key, district.label)}</span>
+                  <strong>×{district.traffic.toFixed(2)}</strong>
+                </li>
+              ))}
+          </ul>
+        </div>
       ) : null}
-      {state.market.channels ? (
-        <p>
-          Previsione canali: Google {pct(state.market.channels.google)}, Meta{" "}
-          {pct(state.market.channels.meta)}, Influencer{" "}
-          {pct(state.market.channels.influencer)}
-        </p>
+
+      {channelEntries ? (
+        <div className="research-block">
+          <h4>Resa dei canali</h4>
+          <ul className="research-rank">
+            {channelEntries.map(([name, value]) => (
+              <li className={name === bestChannel ? "best" : ""} key={name}>
+                <span>
+                  {name}
+                  {name === bestChannel ? " ⭐" : ""}
+                </span>
+                <strong>{pct(value)}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
-      {state.market.segments ? <p>Preferenze dei segmenti sbloccate.</p> : null}
-      {state.market.competitors ? (
-        <p>
-          Concorrenti visibili:{" "}
-          {state.market.competitors
-            .map((competitor) => competitor.nickname)
-            .join(", ")}
-        </p>
+
+      {segments ? (
+        <div className="research-block">
+          <h4>Affinità prodotto × segmento</h4>
+          <div className="research-table-wrap">
+            <table className="research-table">
+              <thead>
+                <tr>
+                  <th>Prodotto</th>
+                  {Object.keys(SEGMENT_LABELS).map((seg) => (
+                    <th key={seg}>{SEGMENT_LABELS[seg]}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(segments.productFit).map(([prod, fits]) => (
+                  <tr key={prod}>
+                    <td>{productLabel(prod, prod)}</td>
+                    {Object.keys(SEGMENT_LABELS).map((seg) => {
+                      const value = fits[seg] ?? 1;
+                      return (
+                        <td
+                          className={value >= 1.1 ? "hot" : value <= 0.9 ? "cold" : ""}
+                          key={seg}
+                        >
+                          {value.toFixed(2)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <small>
+            Tolleranza al prezzo —{" "}
+            {Object.entries(segments.segmentPriceTolerance)
+              .map(([seg, value]) => `${SEGMENT_LABELS[seg] ?? seg} ${value.toFixed(2)}`)
+              .join(" · ")}
+          </small>
+        </div>
+      ) : null}
+
+      {competitors ? (
+        <div className="research-block">
+          <h4>Concorrenti</h4>
+          {competitorsWithData ? (
+            <div className="research-table-wrap">
+              <table className="research-table">
+                <thead>
+                  <tr>
+                    <th>Team</th>
+                    <th>Prodotto</th>
+                    <th>Prezzo</th>
+                    <th>Quartiere</th>
+                    <th>Ricavi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {competitors.map((competitor) => (
+                    <tr key={competitor.nickname}>
+                      <td>
+                        {competitor.nickname}
+                        {competitor.fromPreviousQuarter ? " *" : ""}
+                      </td>
+                      <td>
+                        {competitor.product
+                          ? productLabel(competitor.product, competitor.product)
+                          : "—"}
+                      </td>
+                      <td>
+                        {competitor.priceTier
+                          ? priceLabel(competitor.priceTier, competitor.priceTier)
+                          : "—"}
+                      </td>
+                      <td>
+                        {competitor.district
+                          ? districtLabel(competitor.districtKey ?? "", competitor.district)
+                          : "—"}
+                      </td>
+                      <td>
+                        {typeof competitor.revenue === "number"
+                          ? money(competitor.revenue)
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <small>In attesa delle prime mosse dei concorrenti.</small>
+          )}
+          {competitors.some((c) => c.fromPreviousQuarter) ? (
+            <small>* posizione del trimestre precedente</small>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -1444,6 +1695,108 @@ function CashHistoryChart({
   );
 }
 
+function QuarterForecast({
+  state,
+  decision,
+  researchSpend,
+}: {
+  state: ApiState;
+  decision: Decision;
+  researchSpend: number;
+}) {
+  const baseline = state.market.baseline;
+  const selectedDistrict =
+    state.options.districts.find((d) => d.key === decision.district) ?? null;
+  const revealedTraffic =
+    state.market.traffic?.find((t) => t.key === decision.district) ?? null;
+  const trafficKnown = Boolean(state.market.traffic);
+  const channelsKnown = Boolean(state.market.channels);
+  const competitorsKnown = Boolean(state.market.competitors);
+  const adSpend =
+    decision.googleBudget + decision.metaBudget + decision.influencerBudget;
+
+  // Con la ricerca «concorrenti» posso stimare l'affollamento dal numero di
+  // rivali nello stesso quartiere (stessa formula del motore).
+  let crowding: number | null = null;
+  if (competitorsKnown && state.market.competitors) {
+    const sameDistrict = state.market.competitors.filter(
+      (competitor) => competitor.districtKey === decision.district
+    ).length;
+    crowding = Math.max(0.64, Math.min(1, 1 - Math.max(0, sameDistrict - 1) * 0.08));
+  }
+
+  const projection = projectQuarter(
+    {
+      product: decision.product as QuarterDecisionInput["product"],
+      priceTier: decision.priceTier as QuarterDecisionInput["priceTier"],
+      district: decision.district as QuarterDecisionInput["district"],
+      googleBudget: decision.googleBudget,
+      metaBudget: decision.metaBudget,
+      influencerBudget: decision.influencerBudget,
+    },
+    {
+      baseDemand: baseline.baseDemand,
+      districtTraffic: revealedTraffic?.traffic ?? selectedDistrict?.traffic ?? 1,
+      trafficKnown,
+      mix: (revealedTraffic?.mix ?? selectedDistrict?.mix ?? {}) as Record<string, number>,
+      rent: selectedDistrict?.rent ?? 0,
+      channelPower: state.market.channels,
+      crowding,
+      researchSpend,
+    }
+  );
+
+  const hints: string[] = [];
+  if (!trafficKnown) hints.push("«Mappa traffico» per il traffico reale del quartiere");
+  if (!channelsKnown && adSpend > 0)
+    hints.push("«Previsione canali» per la resa di ogni canale pubblicitario");
+  if (!competitorsKnown) hints.push("«Benchmark concorrenti» per stimare l'affollamento");
+
+  return (
+    <div className="forecast">
+      <div className="forecast-head">
+        <span>🔮 Previsione del trimestre</span>
+        <small>Stima dalle tue scelte attuali · l&apos;intervallo è l&apos;incertezza</small>
+      </div>
+      <div className="forecast-grid">
+        <div>
+          <small>Gelati</small>
+          <strong>{projection.units.toLocaleString("it-IT")}</strong>
+          <em>
+            {projection.unitsLow.toLocaleString("it-IT")}–
+            {projection.unitsHigh.toLocaleString("it-IT")}
+          </em>
+        </div>
+        <div>
+          <small>Ricavi</small>
+          <strong>{money(projection.revenue)}</strong>
+          <em>
+            {money(projection.revenueLow)}–{money(projection.revenueHigh)}
+          </em>
+        </div>
+        <div>
+          <small>Profitto</small>
+          <strong className={projection.profit < 0 ? "danger" : ""}>
+            {money(projection.profit)}
+          </strong>
+          <em>
+            {money(projection.profitLow)}–{money(projection.profitHigh)}
+          </em>
+        </div>
+      </div>
+      {hints.length ? (
+        <ul className="forecast-hints">
+          {hints.map((hint) => (
+            <li key={hint}>🔎 Compra {hint}.</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="forecast-precise">Hai sbloccato tutte le ricerche utili: stima precisa ✓</p>
+      )}
+    </div>
+  );
+}
+
 function DecisionPanel({
   state,
   decision,
@@ -1565,6 +1918,8 @@ function DecisionPanel({
           }
         />
       </fieldset>
+
+      <QuarterForecast state={state} decision={decision} researchSpend={researchSpend} />
 
       <div className="research-shop">
         <h3>🔎 Ricerche di mercato</h3>

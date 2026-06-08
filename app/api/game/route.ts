@@ -13,6 +13,7 @@ import {
   defaultDecision,
   districts,
   evaluateQuarter,
+  firstQuarterOfYear,
   makeRoomCode,
   MAX_PLAYERS,
   priceTiers,
@@ -23,6 +24,7 @@ import {
   researchOptions,
   TOTAL_QUARTERS,
   validateDecision,
+  type DistrictKey,
   type MarketSnapshot,
   type QuarterDecisionInput,
 } from "@/lib/game";
@@ -388,7 +390,8 @@ async function submitDecision(
     0
   );
   const cash = STARTING_CASH + player.cumulativeProfit;
-  const validated = validateDecision(payload ?? {}, researchSpend, cash);
+  const lockedDistrict = await lockedDistrictForPlayer(room.id, player.id, quarter);
+  const validated = validateDecision(payload ?? {}, researchSpend, cash, lockedDistrict);
 
   if ("error" in validated) {
     return { error: validated.error };
@@ -477,7 +480,12 @@ async function computeQuarter(room: RoomRow, quarter: number) {
 
   for (const player of roomPlayers) {
     if (!byPlayer.has(player.id)) {
-      await insertDecision(room.id, player.id, quarter, defaultDecision(), 0, true);
+      const fallback = defaultDecision();
+      const lockedDistrict = await lockedDistrictForPlayer(room.id, player.id, quarter);
+      if (lockedDistrict) {
+        fallback.district = lockedDistrict;
+      }
+      await insertDecision(room.id, player.id, quarter, fallback, 0, true);
     }
   }
 
@@ -602,8 +610,12 @@ async function getRoomState(
   const competitorData = buildCompetitorData(
     roomPlayers,
     allDecisions,
-    latestResults
+    latestResults,
+    latestDecisions
   );
+  const lockedDistrict = player
+    ? await lockedDistrictForPlayer(room.id, player.id, quarter)
+    : null;
   const purchasedTypes = playerResearch.map((purchase) => purchase.type);
   const turnStartedAt = room.status === "active" ? room.updatedAt : null;
   const turnEndsAt = turnStartedAt
@@ -655,6 +667,7 @@ async function getRoomState(
     submittedPlayerIds,
     submittedCount: submittedPlayerIds.length,
     playerDecision,
+    lockedDistrict,
     market: publicResearchData(
       market,
       isHost ? researchOptions.map((item) => item.key) : purchasedTypes,
@@ -745,6 +758,20 @@ async function decisionForPlayer(roomId: string, playerId: string, quarter: numb
     )
     .limit(1);
   return decision ?? null;
+}
+
+// Location bloccata per l'anno in corso: in Q2–Q4 restituisce il quartiere
+// scelto nel Q1 dello stesso anno (null in Q1, o se quel Q1 non ha decisioni —
+// es. squadra entrata a metà anno: in quel caso la scelta corrente fa testo).
+async function lockedDistrictForPlayer(
+  roomId: string,
+  playerId: string,
+  quarter: number
+): Promise<DistrictKey | null> {
+  const quarterOfYear = ((quarter - 1) % 4) + 1;
+  if (quarterOfYear === 1) return null;
+  const q1Decision = await decisionForPlayer(roomId, playerId, firstQuarterOfYear(quarter));
+  return (q1Decision?.district as DistrictKey | undefined) ?? null;
 }
 
 async function researchForPlayer(roomId: string, playerId: string, quarter: number) {
@@ -909,20 +936,26 @@ function numberFrom(value: unknown, fallback: number) {
 function buildCompetitorData(
   roomPlayers: PlayerDbRow[],
   decisions: DecisionRow[],
-  latestResults: ResultRow[]
+  latestResults: ResultRow[],
+  previousDecisions: DecisionRow[]
 ) {
   return roomPlayers.map((player) => {
-    const decision = decisions.find((item) => item.playerId === player.id);
+    // Se il rivale non ha ancora inviato in questo trimestre, mostro la sua
+    // posizione del trimestre precedente così il benchmark non è mai vuoto.
+    const current = decisions.find((item) => item.playerId === player.id);
+    const previous = previousDecisions.find((item) => item.playerId === player.id);
+    const decision = current ?? previous;
     const result = latestResults.find((item) => item.playerId === player.id);
+    const district = districts.find((item) => item.key === decision?.district);
 
     return {
       nickname: player.nickname,
       product: decision?.product ?? null,
       priceTier: decision?.priceTier ?? null,
-      district:
-        districts.find((district) => district.key === decision?.district)?.label ??
-        null,
+      district: district?.label ?? null,
+      districtKey: district?.key ?? null,
       revenue: result?.revenue ?? null,
+      fromPreviousQuarter: !current && Boolean(previous),
     };
   });
 }

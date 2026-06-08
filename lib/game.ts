@@ -150,6 +150,57 @@ const segmentPriceTolerance: Record<Segment, number> = {
   students: 0.72,
 };
 
+// --- Bilanciamento pubblicità ------------------------------------------------
+// adLift = 1 + Σ_canale (budget/1000)^AD_EXPONENT · coeff · channelPower.
+// L'esponente < 1 dà rendimenti decrescenti; i coefficienti sono scelti perché
+// ~2.000 € su un canale producano un lift chiaramente visibile (~+20% unità).
+const AD_EXPONENT = 0.6;
+const AD_COEFFICIENTS = { google: 0.13, meta: 0.12, influencer: 0.115 } as const;
+const BASE_UNITS = 720;
+const UNITS_FLOOR = 18;
+const NEUTRAL_CHANNEL_POWER = { google: 1, meta: 1, influencer: 1 };
+
+function computeFit(mix: Record<string, number>, productKey: ProductKey) {
+  return Object.entries(mix).reduce((sum, [segment, weight]) => {
+    return sum + weight * productFit[productKey][segment as Segment];
+  }, 0);
+}
+
+function computePriceFit(mix: Record<string, number>, priceValue: number) {
+  return Object.entries(mix).reduce((sum, [segment, weight]) => {
+    const tolerance = segmentPriceTolerance[segment as Segment];
+    const premiumFactor = priceValue / 4.4;
+    return (
+      sum + weight * clamp(1.22 - Math.max(0, premiumFactor - tolerance) * 0.58, 0.54, 1.18)
+    );
+  }, 0);
+}
+
+function adContribution(budget: number, coeff: number, power: number) {
+  const spend = Math.max(0, budget);
+  if (spend <= 0) return 0;
+  return Math.pow(spend / 1000, AD_EXPONENT) * coeff * power;
+}
+
+function computeAdLift(
+  budgets: Pick<
+    QuarterDecisionInput,
+    "googleBudget" | "metaBudget" | "influencerBudget"
+  >,
+  power: { google: number; meta: number; influencer: number }
+) {
+  return (
+    1 +
+    adContribution(budgets.googleBudget, AD_COEFFICIENTS.google, power.google) +
+    adContribution(budgets.metaBudget, AD_COEFFICIENTS.meta, power.meta) +
+    adContribution(budgets.influencerBudget, AD_COEFFICIENTS.influencer, power.influencer)
+  );
+}
+
+function crowdingFactor(sameDistrictCount: number) {
+  return clamp(1 - Math.max(0, sameDistrictCount - 1) * 0.08, 0.64, 1);
+}
+
 const seasonProfiles = [
   { name: "Spring", demand: 1.04, note: "mild weather lifts park and campus visits" },
   { name: "Summer", demand: 1.26, note: "tourists and outdoor traffic peak" },
@@ -210,18 +261,22 @@ export function buildMarketSnapshot(seed: number, quarter: number) {
     3
   );
 
+  // Resa dei canali: ogni canale ha un "pavimento" alto (≈1.0) così che spendere
+  // renda sempre qualcosa, ma il canale favorito dall'evento è nettamente migliore
+  // (1.30×). Così la ricerca «channels» resta preziosa senza che la pubblicità
+  // diventi una scommessa al buio.
   const channelPower = {
     google: round(
-      (event.channel === "google" ? 1.18 : 1) * (0.9 + noise(seed, quarter, 5) * 0.28),
+      (event.channel === "google" ? 1.3 : 1) * (1.0 + noise(seed, quarter, 5) * 0.16),
       3
     ),
     meta: round(
-      (event.channel === "meta" ? 1.18 : 1) * (0.88 + noise(seed, quarter, 7) * 0.3),
+      (event.channel === "meta" ? 1.3 : 1) * (0.98 + noise(seed, quarter, 7) * 0.16),
       3
     ),
     influencer: round(
-      (event.channel === "influencer" ? 1.18 : 1) *
-        (0.86 + noise(seed, quarter, 11) * 0.34),
+      (event.channel === "influencer" ? 1.3 : 1) *
+        (0.96 + noise(seed, quarter, 11) * 0.18),
       3
     ),
   };
@@ -259,11 +314,15 @@ export function buildMarketSnapshot(seed: number, quarter: number) {
 export function validateDecision(
   decision: Partial<QuarterDecisionInput>,
   researchSpend: number,
-  availableCash: number
+  availableCash: number,
+  // Se impostato (Q2–Q4), la location è bloccata sulla scelta di inizio anno:
+  // il valore inviato dal client viene ignorato a favore di questo.
+  lockedDistrict?: DistrictKey | null
 ) {
   const product = products.find((item) => item.key === decision.product)?.key;
   const priceTier = priceTiers.find((item) => item.key === decision.priceTier)?.key;
-  const district = districts.find((item) => item.key === decision.district)?.key;
+  const district =
+    lockedDistrict ?? districts.find((item) => item.key === decision.district)?.key;
   const googleBudget = cleanBudget(decision.googleBudget);
   const metaBudget = cleanBudget(decision.metaBudget);
   const influencerBudget = cleanBudget(decision.influencerBudget);
@@ -314,30 +373,17 @@ export function evaluateQuarter(
   const price = priceTiers.find((item) => item.key === decision.priceTier)!;
   const product = products.find((item) => item.key === decision.product)!;
 
-  const fit = Object.entries(district.mix).reduce((sum, [segment, weight]) => {
-    return sum + weight * productFit[product.key][segment as Segment];
-  }, 0);
-  const priceFit = Object.entries(district.mix).reduce((sum, [segment, weight]) => {
-    const tolerance = segmentPriceTolerance[segment as Segment];
-    const premiumFactor = price.price / 4.4;
-    return sum + weight * clamp(1.22 - Math.max(0, premiumFactor - tolerance) * 0.58, 0.54, 1.18);
-  }, 0);
-  const adLift =
-    1 +
-    Math.sqrt(decision.googleBudget / 1000) * 0.105 * market.channelPower.google +
-    Math.sqrt(decision.metaBudget / 1000) * 0.095 * market.channelPower.meta +
-    Math.sqrt(decision.influencerBudget / 1000) *
-      0.085 *
-      market.channelPower.influencer;
+  const fit = computeFit(district.mix, product.key);
+  const priceFit = computePriceFit(district.mix, price.price);
+  const adLift = computeAdLift(decision, market.channelPower);
   const sameDistrict = competitorDecisions.filter(
     (item) => item.district === decision.district
   ).length;
-  const crowding = clamp(1 - Math.max(0, sameDistrict - 1) * 0.08, 0.64, 1);
-  const baseUnits = 720;
+  const crowding = crowdingFactor(sameDistrict);
   const units = Math.max(
-    18,
+    UNITS_FLOOR,
     Math.round(
-      baseUnits *
+      BASE_UNITS *
         market.baseDemand *
         marketDistrict.traffic *
         fit *
@@ -378,6 +424,100 @@ export function evaluateQuarter(
       autoSubmitted: false,
     },
   };
+}
+
+export type QuarterProjection = {
+  units: number;
+  revenue: number;
+  profit: number;
+  unitsLow: number;
+  unitsHigh: number;
+  revenueLow: number;
+  revenueHigh: number;
+  profitLow: number;
+  profitHigh: number;
+  adLift: number;
+};
+
+// Stima — usata lato client — dei gelati/ricavi/profitto attesi dalla scelta
+// corrente. Riusa gli stessi helper di `evaluateQuarter` così la previsione
+// coincide col calcolo reale. Ogni dato di mercato ancora ignoto è sostituito
+// da un'assunzione neutra che allarga la banda `low–high`: comprare la ricerca
+// corrispondente lo rende noto e stringe la stima (è il ritorno della spesa).
+export function projectQuarter(
+  decision: QuarterDecisionInput,
+  params: {
+    baseDemand: number;
+    districtTraffic: number; // valore rivelato se trafficKnown, altrimenti traffico base
+    trafficKnown: boolean;
+    mix: Record<string, number>;
+    rent: number;
+    channelPower: { google: number; meta: number; influencer: number } | null; // null = ignoto
+    crowding: number | null; // null = ignoto (concorrenti non rivelati)
+    researchSpend: number;
+  }
+): QuarterProjection {
+  const price = priceTiers.find((item) => item.key === decision.priceTier) ?? priceTiers[1];
+  const product = products.find((item) => item.key === decision.product) ?? products[0];
+
+  const fit = computeFit(params.mix, product.key);
+  const priceFit = computePriceFit(params.mix, price.price);
+
+  // Resa dei canali: se ignota uso un punto neutro (1.0) con banda 0.95–1.35.
+  const power = params.channelPower ?? NEUTRAL_CHANNEL_POWER;
+  const adLift = computeAdLift(decision, power);
+  const adLiftLow = params.channelPower
+    ? adLift
+    : computeAdLift(decision, { google: 0.95, meta: 0.95, influencer: 0.95 });
+  const adLiftHigh = params.channelPower
+    ? adLift
+    : computeAdLift(decision, { google: 1.35, meta: 1.35, influencer: 1.35 });
+
+  // Traffico: se ignoto, punto = traffico base, banda 0.82×–1.28× (copre evento + rumore).
+  const trafficPoint = params.districtTraffic;
+  const trafficLow = params.trafficKnown ? trafficPoint : trafficPoint * 0.82;
+  const trafficHigh = params.trafficKnown ? trafficPoint : trafficPoint * 1.28;
+
+  // Affollamento: se ignoto, punto prudente 0.92 con banda 0.78–1.0.
+  const crowdingPoint = params.crowding ?? 0.92;
+  const crowdingLow = params.crowding ?? 0.78;
+  const crowdingHigh = params.crowding ?? 1.0;
+
+  const unitsFor = (traffic: number, lift: number, crowd: number) =>
+    Math.max(
+      UNITS_FLOOR,
+      Math.round(BASE_UNITS * params.baseDemand * traffic * fit * priceFit * lift * crowd)
+    );
+
+  const units = unitsFor(trafficPoint, adLift, crowdingPoint);
+  const unitsLow = unitsFor(trafficLow, adLiftLow, crowdingLow);
+  const unitsHigh = unitsFor(trafficHigh, adLiftHigh, crowdingHigh);
+
+  const adSpend =
+    Math.max(0, decision.googleBudget) +
+    Math.max(0, decision.metaBudget) +
+    Math.max(0, decision.influencerBudget);
+  const fixedCost = params.rent + adSpend + params.researchSpend;
+  const profitFor = (u: number) => round(u * price.price * price.margin - fixedCost, 2);
+
+  return {
+    units,
+    revenue: round(units * price.price, 2),
+    profit: profitFor(units),
+    unitsLow,
+    unitsHigh,
+    revenueLow: round(unitsLow * price.price, 2),
+    revenueHigh: round(unitsHigh * price.price, 2),
+    profitLow: profitFor(unitsLow),
+    profitHigh: profitFor(unitsHigh),
+    adLift: round(adLift, 2),
+  };
+}
+
+// Primo trimestre dell'anno a cui appartiene `quarter` (1, 5, 9 …). La location
+// si sceglie qui e resta bloccata per i trimestri successivi dello stesso anno.
+export function firstQuarterOfYear(quarter: number) {
+  return quarter - ((quarter - 1) % 4);
 }
 
 export function researchCost(type: string) {
