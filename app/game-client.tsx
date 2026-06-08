@@ -81,6 +81,36 @@ type ApiState = {
     satisfaction: number;
     drivers: Record<string, unknown>;
   }>;
+  latestPublicResults: Array<{
+    playerId: string;
+    nickname: string;
+    quarter: number;
+    units: number;
+    revenue: number;
+    profit: number;
+    marketShare: number;
+    satisfaction: number;
+  }>;
+  currentPlayerLatestBreakdown: null | {
+    quarter: number;
+    unitPrice: number;
+    units: number;
+    revenue: number;
+    productCost: number;
+    rent: number;
+    adSpend: number;
+    researchSpend: number;
+    totalExpenses: number;
+    profit: number;
+    factors: {
+      productFit: number;
+      priceFit: number;
+      traffic: number;
+      adLift: number;
+      crowding: number;
+      autoSubmitted: boolean;
+    };
+  };
   allResults: Array<{
     playerId: string;
     quarter: number;
@@ -792,6 +822,7 @@ export default function GameClient() {
               {currentPlayerResult ? (
                 <ResultCard
                   result={currentPlayerResult}
+                  breakdown={state.currentPlayerLatestBreakdown}
                   title="Il tuo ultimo risultato"
                 />
               ) : null}
@@ -1212,6 +1243,7 @@ function Leaderboard({ state }: { state: ApiState }) {
         <h2>🍨 Classifica cassa</h2>
       </div>
       <CashHistoryChart series={cashHistory} hasResults={state.allResults.length > 0} />
+      <LatestSalesTable results={state.latestPublicResults} />
       <div className="leaderboard-list">
         {state.leaderboard.length ? (
           state.leaderboard.map((player, index) => (
@@ -1226,6 +1258,50 @@ function Leaderboard({ state }: { state: ApiState }) {
         )}
       </div>
     </section>
+  );
+}
+
+function LatestSalesTable({
+  results,
+}: {
+  results: ApiState["latestPublicResults"];
+}) {
+  if (!results.length) {
+    return (
+      <div className="public-results empty">
+        <span>Vendite ultimo trimestre</span>
+        <small>Il resoconto pubblico apparirà dopo il primo trimestre.</small>
+      </div>
+    );
+  }
+
+  return (
+    <div className="public-results">
+      <div className="public-results-header">
+        <span>Vendite ultimo trimestre</span>
+        <small>{quarterLabel(results[0].quarter)}</small>
+      </div>
+      <div className="public-results-table">
+        <div className="public-results-row heading">
+          <span>Team</span>
+          <span>Gelati</span>
+          <span>Ricavi</span>
+          <span>Profitto</span>
+          <span>Quota</span>
+        </div>
+        {results.map((result) => (
+          <div className="public-results-row" key={result.playerId}>
+            <strong>{result.nickname}</strong>
+            <span>{result.units.toLocaleString("it-IT")}</span>
+            <span>{money(result.revenue)}</span>
+            <span className={result.profit < 0 ? "danger" : ""}>
+              {money(result.profit)}
+            </span>
+            <span>{Math.round(result.marketShare * 100)}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1637,9 +1713,11 @@ function Slider({
 
 function ResultCard({
   result,
+  breakdown,
   title,
 }: {
   result: ApiState["latestResults"][number];
+  breakdown: ApiState["currentPlayerLatestBreakdown"];
   title: string;
 }) {
   return (
@@ -1653,6 +1731,10 @@ function ResultCard({
         <strong>{money(result.revenue)}</strong>
       </div>
       <div className="metric-row">
+        <span>Gelati venduti</span>
+        <strong>{result.units.toLocaleString("it-IT")}</strong>
+      </div>
+      <div className="metric-row">
         <span>Profitto</span>
         <strong>{money(result.profit)}</strong>
       </div>
@@ -1664,7 +1746,76 @@ function ResultCard({
         <span>Soddisfazione</span>
         <strong>{Math.round(result.satisfaction)}%</strong>
       </div>
+      {breakdown ? (
+        <>
+          <div className="result-breakdown">
+            <h3>Ricavi</h3>
+            <div className="breakdown-row">
+              <span>
+                {breakdown.units.toLocaleString("it-IT")} gelati ×{" "}
+                {money(breakdown.unitPrice)}
+              </span>
+              <strong>{money(breakdown.revenue)}</strong>
+            </div>
+          </div>
+          <div className="result-breakdown">
+            <h3>Spese</h3>
+            <div className="breakdown-row">
+              <span>Costo prodotto</span>
+              <strong>{money(breakdown.productCost)}</strong>
+            </div>
+            <div className="breakdown-row">
+              <span>Affitto location</span>
+              <strong>{money(breakdown.rent)}</strong>
+            </div>
+            <div className="breakdown-row">
+              <span>Pubblicità</span>
+              <strong>{money(breakdown.adSpend)}</strong>
+            </div>
+            <div className="breakdown-row">
+              <span>Ricerche</span>
+              <strong>{money(breakdown.researchSpend)}</strong>
+            </div>
+            <div className="breakdown-row total">
+              <span>Totale spese</span>
+              <strong>{money(breakdown.totalExpenses)}</strong>
+            </div>
+          </div>
+          <div className="profit-equation">
+            <span>Profitto</span>
+            <strong className={breakdown.profit < 0 ? "danger" : ""}>
+              {money(breakdown.revenue)} - {money(breakdown.totalExpenses)} ={" "}
+              {money(breakdown.profit)}
+            </strong>
+          </div>
+          <div className="result-breakdown">
+            <h3>Fattori del risultato</h3>
+            <div className="factor-grid">
+              <FactorPill label="Prodotto" value={breakdown.factors.productFit} />
+              <FactorPill label="Prezzo" value={breakdown.factors.priceFit} />
+              <FactorPill label="Traffico" value={breakdown.factors.traffic} />
+              <FactorPill label="Pubblicità" value={breakdown.factors.adLift} />
+              <FactorPill label="Affollamento" value={breakdown.factors.crowding} />
+              {breakdown.factors.autoSubmitted ? (
+                <span className="factor-pill warning">
+                  <small>Invio</small>
+                  <strong>Automatico</strong>
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </>
+      ) : null}
     </section>
+  );
+}
+
+function FactorPill({ label, value }: { label: string; value: number }) {
+  return (
+    <span className="factor-pill">
+      <small>{label}</small>
+      <strong>{value ? `×${value.toFixed(2)}` : "n/d"}</strong>
+    </span>
   );
 }
 

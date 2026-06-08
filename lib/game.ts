@@ -349,8 +349,9 @@ export function evaluateQuarter(
   const revenue = round(units * price.price, 2);
   const adSpend =
     decision.googleBudget + decision.metaBudget + decision.influencerBudget;
-  const unitCost = units * price.price * (1 - price.margin);
-  const profit = round(revenue - unitCost - district.rent - adSpend - researchSpend, 2);
+  const productCost = round(units * price.price * (1 - price.margin), 2);
+  const totalExpenses = round(productCost + district.rent + adSpend + researchSpend, 2);
+  const profit = round(revenue - totalExpenses, 2);
   const satisfaction = round(
     clamp(54 + fit * 21 + priceFit * 12 - (1 - crowding) * 16, 0, 100),
     1
@@ -369,6 +370,11 @@ export function evaluateQuarter(
       crowding: round(crowding, 2),
       traffic: marketDistrict.traffic,
       rent: district.rent,
+      unitPrice: price.price,
+      productCost,
+      adSpend,
+      researchSpend,
+      totalExpenses,
       autoSubmitted: false,
     },
   };

@@ -581,6 +581,24 @@ async function getRoomState(
     .from(quarterResults)
     .where(eq(quarterResults.roomId, room.id))
     .orderBy(desc(quarterResults.quarter), desc(quarterResults.revenue));
+  const latestResultQuarter = latestResults[0]?.quarter ?? null;
+  const latestDecisions = latestResultQuarter
+    ? await db
+        .select()
+        .from(quarterDecisions)
+        .where(
+          and(
+            eq(quarterDecisions.roomId, room.id),
+            eq(quarterDecisions.quarter, latestResultQuarter)
+          )
+        )
+    : [];
+  const latestDecisionByPlayer = new Map(
+    latestDecisions.map((decision) => [decision.playerId, decision])
+  );
+  const currentPlayerLatestResult = player
+    ? latestResults.find((result) => result.playerId === player.id) ?? null
+    : null;
   const competitorData = buildCompetitorData(
     roomPlayers,
     allDecisions,
@@ -645,6 +663,16 @@ async function getRoomState(
     purchasedResearch: purchasedTypes,
     researchSpend: playerResearch.reduce((sum, item) => sum + item.cost, 0),
     latestResults: latestResults.map(resultView),
+    latestPublicResults: latestResults
+      .map((result) => publicResultView(result, roomPlayers))
+      .sort((a, b) => b.units - a.units),
+    currentPlayerLatestBreakdown:
+      currentPlayerLatestResult && player
+        ? breakdownView(
+            currentPlayerLatestResult,
+            latestDecisionByPlayer.get(player.id) ?? null
+          )
+        : null,
     allResults: allResults.map(resultView),
     options: {
       products,
@@ -803,6 +831,79 @@ function resultView(result: ResultRow) {
     satisfaction: result.satisfaction,
     drivers: JSON.parse(result.data) as Record<string, unknown>,
   };
+}
+
+function publicResultView(result: ResultRow, roomPlayers: PlayerDbRow[]) {
+  const player = roomPlayers.find((item) => item.id === result.playerId);
+
+  return {
+    playerId: result.playerId,
+    nickname: player?.nickname ?? "Squadra",
+    quarter: result.quarter,
+    units: result.units,
+    revenue: result.revenue,
+    profit: result.profit,
+    marketShare: result.marketShare,
+    satisfaction: result.satisfaction,
+  };
+}
+
+function breakdownView(result: ResultRow, decision: DecisionRow | null) {
+  const drivers = JSON.parse(result.data) as Record<string, unknown>;
+  const decisionInput = decision ? toDecisionInput(decision) : null;
+  const price = decisionInput
+    ? priceTiers.find((item) => item.key === decisionInput.priceTier)
+    : null;
+  const district = decisionInput
+    ? districts.find((item) => item.key === decisionInput.district)
+    : null;
+  const unitPrice = numberFrom(
+    drivers.unitPrice,
+    price?.price ?? (result.units > 0 ? result.revenue / result.units : 0)
+  );
+  const rent = numberFrom(drivers.rent, district?.rent ?? 0);
+  const adSpend = numberFrom(
+    drivers.adSpend,
+    decisionInput
+      ? decisionInput.googleBudget +
+          decisionInput.metaBudget +
+          decisionInput.influencerBudget
+      : 0
+  );
+  const researchSpend = numberFrom(drivers.researchSpend, decision?.researchSpend ?? 0);
+  const fallbackProductCost = price
+    ? result.units * price.price * (1 - price.margin)
+    : Math.max(0, result.revenue - result.profit - rent - adSpend - researchSpend);
+  const productCost = numberFrom(drivers.productCost, fallbackProductCost);
+  const totalExpenses = numberFrom(
+    drivers.totalExpenses,
+    productCost + rent + adSpend + researchSpend
+  );
+
+  return {
+    quarter: result.quarter,
+    unitPrice,
+    units: result.units,
+    revenue: result.revenue,
+    productCost,
+    rent,
+    adSpend,
+    researchSpend,
+    totalExpenses,
+    profit: result.profit,
+    factors: {
+      productFit: numberFrom(drivers.productFit, 0),
+      priceFit: numberFrom(drivers.priceFit, 0),
+      traffic: numberFrom(drivers.traffic, 0),
+      adLift: numberFrom(drivers.adLift, 0),
+      crowding: numberFrom(drivers.crowding, 0),
+      autoSubmitted: Boolean(drivers.autoSubmitted),
+    },
+  };
+}
+
+function numberFrom(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 function buildCompetitorData(

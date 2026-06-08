@@ -696,6 +696,162 @@ button:focus-visible {
   width: 8px;
 }
 
+.public-results {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px;
+}
+
+.public-results.empty {
+  background: #eef7f2;
+}
+
+.public-results-header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.public-results > span,
+.public-results-header span {
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.public-results small,
+.public-results-header small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.public-results-table {
+  display: grid;
+  gap: 2px;
+}
+
+.public-results-row {
+  align-items: center;
+  border-bottom: 1px solid #edf0ed;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: minmax(70px, 1.2fr) 0.62fr 0.78fr 0.78fr 0.48fr;
+  padding: 6px 0;
+}
+
+.public-results-row:last-child {
+  border-bottom: 0;
+}
+
+.public-results-row.heading {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.public-results-row strong {
+  color: var(--ink);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.public-results-row span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 750;
+  text-align: right;
+}
+
+.public-results-row strong:first-child,
+.public-results-row.heading span:first-child {
+  text-align: left;
+}
+
+.result-breakdown {
+  border-top: 1px solid #edf0ed;
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.result-breakdown h3 {
+  font-size: 0.86rem;
+  margin: 0;
+}
+
+.breakdown-row,
+.profit-equation {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.breakdown-row span,
+.profit-equation span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.breakdown-row strong,
+.profit-equation strong {
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+.breakdown-row.total {
+  border-top: 1px solid #edf0ed;
+  padding-top: 6px;
+}
+
+.profit-equation {
+  background: #fff9dc;
+  border: 1px solid #e2ba3e;
+  border-radius: 8px;
+  margin-top: 10px;
+  padding: 10px;
+}
+
+.factor-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.factor-pill {
+  background: #f8fbf8;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+}
+
+.factor-pill.warning {
+  background: #fff9dc;
+  border-color: #e2ba3e;
+}
+
+.factor-pill small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.factor-pill strong {
+  color: var(--ink);
+  font-size: 0.84rem;
+}
+
 .budget-strip,
 .timer-strip {
   background: #fff9dc;
