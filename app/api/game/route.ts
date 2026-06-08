@@ -37,6 +37,7 @@ type ActionPayload = {
   instructorName?: string;
   nickname?: string;
   researchType?: string;
+  autoSubmit?: boolean;
   decision?: Partial<QuarterDecisionInput>;
 };
 
@@ -44,6 +45,8 @@ type RoomRow = typeof rooms.$inferSelect;
 type PlayerDbRow = typeof players.$inferSelect;
 type DecisionRow = typeof quarterDecisions.$inferSelect;
 type ResultRow = typeof quarterResults.$inferSelect;
+
+const TURN_DURATION_SECONDS = 5 * 60;
 
 let schemaReady: Promise<void> | null = null;
 
@@ -133,7 +136,8 @@ export async function POST(request: Request) {
         await submitDecision(
           payload.roomCode,
           payload.playerToken,
-          payload.decision ?? {}
+          payload.decision ?? {},
+          Boolean(payload.autoSubmit)
         )
       );
     }
@@ -363,7 +367,8 @@ async function purchaseResearch(
 async function submitDecision(
   roomCode?: string,
   playerToken?: string,
-  payload?: Partial<QuarterDecisionInput>
+  payload?: Partial<QuarterDecisionInput>,
+  autoSubmit = false
 ) {
   const room = await requireRoom(roomCode);
   const player = await requirePlayer(room.id, playerToken);
@@ -395,7 +400,7 @@ async function submitDecision(
     quarter,
     validated.decision,
     researchSpend,
-    false
+    autoSubmit
   );
 
   return { state: await getRoomState(room.code, playerToken) };
@@ -582,6 +587,10 @@ async function getRoomState(
     latestResults
   );
   const purchasedTypes = playerResearch.map((purchase) => purchase.type);
+  const turnStartedAt = room.status === "active" ? room.updatedAt : null;
+  const turnEndsAt = turnStartedAt
+    ? new Date(new Date(turnStartedAt).getTime() + TURN_DURATION_SECONDS * 1000).toISOString()
+    : null;
 
   return {
     room: {
@@ -591,6 +600,10 @@ async function getRoomState(
       currentQuarter: room.currentQuarter,
       totalQuarters: TOTAL_QUARTERS,
       startingCash: STARTING_CASH,
+      turnStartedAt,
+      turnEndsAt,
+      turnDurationSeconds: TURN_DURATION_SECONDS,
+      serverNow: now(),
     },
     isHost,
     currentPlayer: player

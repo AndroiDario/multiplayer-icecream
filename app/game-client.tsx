@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type ApiState = {
   room: {
@@ -10,6 +10,10 @@ type ApiState = {
     currentQuarter: number;
     totalQuarters: number;
     startingCash: number;
+    turnStartedAt: string | null;
+    turnEndsAt: string | null;
+    turnDurationSeconds: number;
+    serverNow: string;
   };
   isHost: boolean;
   currentPlayer: null | { id: string; nickname: string; token: string; cash: number };
@@ -191,6 +195,31 @@ const EVENT_IT: Record<string, { name: string; note: string }> = {
   },
 };
 
+const CASH_CHART_COLORS = [
+  "#d95d67",
+  "#4f9d72",
+  "#4f7ea8",
+  "#c28a16",
+  "#8f63b8",
+  "#e8853f",
+  "#2f9c95",
+  "#b84f8a",
+  "#6f7f2a",
+  "#4b5ca8",
+];
+
+type CashHistoryPoint = {
+  quarter: number;
+  cash: number;
+};
+
+type CashHistorySeries = {
+  playerId: string;
+  nickname: string;
+  color: string;
+  points: CashHistoryPoint[];
+};
+
 function productLabel(key: string, fallback: string) {
   return PRODUCT_LABELS[key] ?? fallback;
 }
@@ -206,6 +235,101 @@ function researchLabel(key: string, fallback: string) {
 function quarterLabel(quarter: number) {
   const q = Math.max(1, quarter);
   return `Anno ${Math.ceil(q / 4)} · Q${((q - 1) % 4) + 1}`;
+}
+
+function formatCountdown(totalSeconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function draftStorageKey(roomCode: string, playerToken: string, quarter: number) {
+  return `ice-decision-draft:${roomCode}:${playerToken}:${quarter}`;
+}
+
+function isDecision(value: unknown): value is Decision {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.product === "string" &&
+    typeof candidate.priceTier === "string" &&
+    typeof candidate.district === "string" &&
+    typeof candidate.googleBudget === "number" &&
+    typeof candidate.metaBudget === "number" &&
+    typeof candidate.influencerBudget === "number"
+  );
+}
+
+function scaleDecisionForCash(
+  decision: Decision,
+  availableCash: number,
+  researchSpend: number
+) {
+  const allowedAdSpend = Math.max(0, Math.floor(availableCash - researchSpend));
+  const currentAdSpend =
+    decision.googleBudget + decision.metaBudget + decision.influencerBudget;
+
+  if (currentAdSpend <= allowedAdSpend) {
+    return decision;
+  }
+
+  if (currentAdSpend <= 0 || allowedAdSpend <= 0) {
+    return {
+      ...decision,
+      googleBudget: 0,
+      metaBudget: 0,
+      influencerBudget: 0,
+    };
+  }
+
+  const ratio = allowedAdSpend / currentAdSpend;
+  const googleBudget = Math.floor((decision.googleBudget * ratio) / 100) * 100;
+  const metaBudget = Math.floor((decision.metaBudget * ratio) / 100) * 100;
+  const influencerBudget = Math.max(
+    0,
+    allowedAdSpend - googleBudget - metaBudget
+  );
+
+  return {
+    ...decision,
+    googleBudget,
+    metaBudget,
+    influencerBudget,
+  };
+}
+
+function buildCashHistory(state: ApiState): CashHistorySeries[] {
+  const colorByPlayerId = new Map(
+    [...state.players]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((player, index) => [
+        player.id,
+        CASH_CHART_COLORS[index % CASH_CHART_COLORS.length],
+      ])
+  );
+
+  return state.leaderboard.map((player, index) => {
+    const results = state.allResults
+      .filter((result) => result.playerId === player.id)
+      .sort((a, b) => a.quarter - b.quarter);
+    let cash = state.room.startingCash;
+    const points: CashHistoryPoint[] = [{ quarter: 0, cash }];
+
+    for (const result of results) {
+      cash += result.profit;
+      points.push({ quarter: result.quarter, cash });
+    }
+
+    return {
+      playerId: player.id,
+      nickname: player.nickname,
+      color:
+        colorByPlayerId.get(player.id) ??
+        CASH_CHART_COLORS[index % CASH_CHART_COLORS.length],
+      points,
+    };
+  });
 }
 
 function readStoredSession() {
@@ -245,6 +369,15 @@ export default function GameClient() {
   const [decision, setDecision] = useState<Decision>(starterDecision);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [clockNow, setClockNow] = useState(() => Date.now());
+  const [serverClockBase, setServerClockBase] = useState<{
+    serverNowMs: number;
+    receivedAtMs: number;
+  } | null>(null);
+  const restoredDraftKeyRef = useRef("");
+  const skipDraftSaveKeyRef = useRef("");
+  const autoSubmitKeyRef = useRef("");
+  const submitInFlightRef = useRef(false);
 
   const loadState = useCallback(async () => {
     if (!roomCode) return;
@@ -258,6 +391,10 @@ export default function GameClient() {
       return;
     }
     setState(data);
+    const serverNow = Date.parse(data.room.serverNow);
+    if (Number.isFinite(serverNow)) {
+      setServerClockBase({ serverNowMs: serverNow, receivedAtMs: Date.now() });
+    }
   }, [hostToken, mode, playerToken, roomCode]);
 
   useEffect(() => {
@@ -299,7 +436,16 @@ export default function GameClient() {
         localStorage.setItem("ice-player-token", data.playerToken);
         localStorage.setItem("ice-mode", "player");
       }
-      if (data.state) setState(data.state);
+      if (data.state) {
+        setState(data.state);
+        const serverNow = Date.parse(data.state.room.serverNow);
+        if (Number.isFinite(serverNow)) {
+          setServerClockBase({
+            serverNowMs: serverNow,
+            receivedAtMs: Date.now(),
+          });
+        }
+      }
       return data;
     } finally {
       setBusy(false);
@@ -323,6 +469,123 @@ export default function GameClient() {
   const remainingCash = availableCash - adSpend - researchSpend;
   const projectedCash = remainingCash - selectedRent;
   const isSubmitted = Boolean(state?.playerDecision);
+  const stateRoomCode = state?.room.code ?? "";
+  const serverClockNow = serverClockBase
+    ? serverClockBase.serverNowMs + (clockNow - serverClockBase.receivedAtMs)
+    : clockNow;
+  const turnEndsAtMs = state?.room.turnEndsAt
+    ? Date.parse(state.room.turnEndsAt)
+    : Number.NaN;
+  const turnRemainingSeconds =
+    state?.room.status === "active" && Number.isFinite(turnEndsAtMs)
+      ? Math.max(0, Math.ceil((turnEndsAtMs - serverClockNow) / 1000))
+      : null;
+  const activeDraftKey =
+    state?.room.status === "active" && state.currentPlayer && playerToken
+      ? draftStorageKey(state.room.code, playerToken, state.room.currentQuarter)
+      : "";
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!activeDraftKey || isSubmitted) return;
+    if (restoredDraftKeyRef.current === activeDraftKey) return;
+
+    restoredDraftKeyRef.current = activeDraftKey;
+    const stored = localStorage.getItem(activeDraftKey);
+    if (!stored) return;
+
+    try {
+      const parsed = JSON.parse(stored) as unknown;
+      if (isDecision(parsed)) {
+        skipDraftSaveKeyRef.current = activeDraftKey;
+        const restoreTimer = window.setTimeout(() => setDecision(parsed), 0);
+        return () => window.clearTimeout(restoreTimer);
+      }
+    } catch {
+      localStorage.removeItem(activeDraftKey);
+    }
+  }, [activeDraftKey, isSubmitted]);
+
+  useEffect(() => {
+    if (!activeDraftKey) return;
+
+    if (isSubmitted) {
+      localStorage.removeItem(activeDraftKey);
+      return;
+    }
+
+    if (skipDraftSaveKeyRef.current === activeDraftKey) {
+      skipDraftSaveKeyRef.current = "";
+      return;
+    }
+
+    localStorage.setItem(activeDraftKey, JSON.stringify(decision));
+  }, [activeDraftKey, decision, isSubmitted]);
+
+  const submitDecisionRequest = useCallback(
+    async (decisionToSubmit: Decision, autoSubmit = false) => {
+      if (!stateRoomCode || !playerToken || submitInFlightRef.current) return;
+
+      submitInFlightRef.current = true;
+      try {
+        const data = await api({
+          action: "submitDecision",
+          roomCode: stateRoomCode,
+          playerToken,
+          autoSubmit,
+          decision: decisionToSubmit,
+        });
+
+        if (!data?.error && activeDraftKey) {
+          localStorage.removeItem(activeDraftKey);
+        }
+      } catch {
+        setError("Non riesco a inviare le scelte. Controlla la connessione e riprova.");
+      } finally {
+        submitInFlightRef.current = false;
+      }
+    },
+    [activeDraftKey, api, playerToken, stateRoomCode]
+  );
+
+  useEffect(() => {
+    if (
+      mode !== "player" ||
+      !state?.currentPlayer ||
+      state.room.status !== "active" ||
+      isSubmitted ||
+      turnRemainingSeconds === null ||
+      turnRemainingSeconds > 0 ||
+      !activeDraftKey
+    ) {
+      return;
+    }
+
+    if (autoSubmitKeyRef.current === activeDraftKey) return;
+    autoSubmitKeyRef.current = activeDraftKey;
+
+    const autoDecision = scaleDecisionForCash(
+      decision,
+      availableCash,
+      researchSpend
+    );
+    void submitDecisionRequest(autoDecision, true);
+  }, [
+    activeDraftKey,
+    availableCash,
+    decision,
+    isSubmitted,
+    mode,
+    researchSpend,
+    state?.currentPlayer,
+    state?.room.status,
+    submitDecisionRequest,
+    turnRemainingSeconds,
+  ]);
 
   function resetSession() {
     localStorage.removeItem("ice-room-code");
@@ -455,6 +718,7 @@ export default function GameClient() {
               state={state}
               mode={mode}
               busy={busy}
+              turnRemainingSeconds={turnRemainingSeconds}
               advance={() =>
                 api({
                   action: "advanceQuarter",
@@ -472,7 +736,13 @@ export default function GameClient() {
         </aside>
 
         <section className="main-stage">
-          {state ? <NextStepBanner state={state} mode={mode} /> : null}
+          {state ? (
+            <NextStepBanner
+              state={state}
+              mode={mode}
+              turnRemainingSeconds={turnRemainingSeconds}
+            />
+          ) : null}
           <HowToPlay />
           <CityMap state={state} decision={decision} setDecision={setDecision} />
           {state ? (
@@ -507,6 +777,7 @@ export default function GameClient() {
                   projectedCash={projectedCash}
                   isSubmitted={isSubmitted}
                   busy={busy}
+                  turnRemainingSeconds={turnRemainingSeconds}
                   purchaseResearch={(researchType) =>
                     api({
                       action: "purchaseResearch",
@@ -515,14 +786,7 @@ export default function GameClient() {
                       researchType,
                     })
                   }
-                  submit={() =>
-                    api({
-                      action: "submitDecision",
-                      roomCode: state.room.code,
-                      playerToken,
-                      decision,
-                    })
-                  }
+                  submit={() => submitDecisionRequest(decision)}
                 />
               ) : null}
               {currentPlayerResult ? (
@@ -547,17 +811,23 @@ export default function GameClient() {
 function NextStepBanner({
   state,
   mode,
+  turnRemainingSeconds,
 }: {
   state: ApiState;
   mode: "instructor" | "player";
+  turnRemainingSeconds: number | null;
 }) {
   const status = state.room.status;
   const total = state.players.length;
   const submitted = state.submittedCount;
   const cash = money(state.currentPlayer?.cash ?? state.room.startingCash);
   const leader = state.leaderboard[0];
+  const countdown =
+    state.room.status === "active" && turnRemainingSeconds !== null
+      ? formatCountdown(turnRemainingSeconds)
+      : null;
 
-  let eyebrow = "Cosa fare adesso";
+  const eyebrow = "Cosa fare adesso";
   let title = "";
   let body: React.ReactNode = "";
 
@@ -576,8 +846,9 @@ function NextStepBanner({
       body = (
         <>
           Le squadre stanno decidendo: <strong>{submitted}/{total}</strong> hanno
-          inviato. Premi «Avanza trimestre» a sinistra per calcolare i risultati e
-          passare al trimestre successivo.
+          inviato. Tempo rimasto: <strong>{countdown}</strong>. Premi «Avanza
+          trimestre» a sinistra per calcolare i risultati e passare al trimestre
+          successivo.
         </>
       );
     } else {
@@ -612,6 +883,12 @@ function NextStepBanner({
           <>
             <strong>{submitted}/{total}</strong> squadre pronte. Attendi che il
             professore avanzi il trimestre per vedere i risultati.
+            {countdown ? (
+              <>
+                {" "}
+                Tempo rimasto: <strong>{countdown}</strong>.
+              </>
+            ) : null}
           </>
         );
       } else {
@@ -622,6 +899,12 @@ function NextStepBanner({
             a destra: <strong>1)</strong> compra ricerche se vuoi ·{" "}
             <strong>2)</strong> imposta le 4P e i budget pubblicitari ·{" "}
             <strong>3)</strong> premi «Invia trimestre».
+            {countdown ? (
+              <>
+                {" "}
+                Tempo rimasto: <strong>{countdown}</strong>.
+              </>
+            ) : null}
           </>
         );
       }
@@ -680,11 +963,13 @@ function RoomControls({
   state,
   mode,
   busy,
+  turnRemainingSeconds,
   advance,
 }: {
   state: ApiState;
   mode: "instructor" | "player";
   busy: boolean;
+  turnRemainingSeconds: number | null;
   advance: () => void;
 }) {
   const statusLabel =
@@ -712,6 +997,14 @@ function RoomControls({
           {state.submittedCount}/{state.players.length}
         </strong>
       </div>
+      {state.room.status === "active" && turnRemainingSeconds !== null ? (
+        <div className="metric-row">
+          <span>Tempo</span>
+          <strong className={turnRemainingSeconds <= 30 ? "danger" : ""}>
+            {formatCountdown(turnRemainingSeconds)}
+          </strong>
+        </div>
+      ) : null}
       {mode === "instructor" ? (
         <>
           <button
@@ -729,8 +1022,8 @@ function RoomControls({
           ) : null}
           {state.room.status === "active" ? (
             <small className="control-hint">
-              Puoi avanzare anche se non tutte le squadre hanno inviato: chi non
-              invia gioca con scelte di default.
+              Allo scadere, ogni scheda squadra aperta invia automaticamente le
+              scelte correnti. Puoi avanzare quando vuoi calcolare i risultati.
             </small>
           ) : null}
         </>
@@ -910,12 +1203,15 @@ function ResearchSummary({ state }: { state: ApiState }) {
 }
 
 function Leaderboard({ state }: { state: ApiState }) {
+  const cashHistory = buildCashHistory(state);
+
   return (
     <section className="score-panel">
       <div className="panel-heading">
         <p className="eyebrow">Condizione di vittoria</p>
         <h2>🍨 Classifica cassa</h2>
       </div>
+      <CashHistoryChart series={cashHistory} hasResults={state.allResults.length > 0} />
       <div className="leaderboard-list">
         {state.leaderboard.length ? (
           state.leaderboard.map((player, index) => (
@@ -933,6 +1229,145 @@ function Leaderboard({ state }: { state: ApiState }) {
   );
 }
 
+function CashHistoryChart({
+  series,
+  hasResults,
+}: {
+  series: CashHistorySeries[];
+  hasResults: boolean;
+}) {
+  if (!series.length) {
+    return null;
+  }
+
+  if (!hasResults) {
+    return (
+      <div className="cash-history empty">
+        <span>Andamento cassa</span>
+        <small>Il grafico apparirà dopo il primo trimestre.</small>
+      </div>
+    );
+  }
+
+  const allPoints = series.flatMap((item) => item.points);
+  const maxQuarter = Math.max(1, ...allPoints.map((point) => point.quarter));
+  const rawMinCash = Math.min(...allPoints.map((point) => point.cash));
+  const rawMaxCash = Math.max(...allPoints.map((point) => point.cash));
+  const cashRange = Math.max(1000, rawMaxCash - rawMinCash);
+  const minCash = rawMinCash - cashRange * 0.08;
+  const maxCash = rawMaxCash + cashRange * 0.08;
+  const chart = {
+    width: 320,
+    height: 158,
+    left: 48,
+    right: 12,
+    top: 16,
+    bottom: 26,
+  };
+  const innerWidth = chart.width - chart.left - chart.right;
+  const innerHeight = chart.height - chart.top - chart.bottom;
+
+  const xFor = (quarter: number) =>
+    chart.left + (quarter / maxQuarter) * innerWidth;
+  const yFor = (cash: number) =>
+    chart.top + ((maxCash - cash) / (maxCash - minCash)) * innerHeight;
+
+  return (
+    <div className="cash-history">
+      <div className="cash-history-header">
+        <span>Andamento cassa</span>
+        <small>
+          {money(rawMinCash)} - {money(rawMaxCash)}
+        </small>
+      </div>
+      <svg
+        className="cash-history-chart"
+        viewBox={`0 0 ${chart.width} ${chart.height}`}
+        role="img"
+        aria-label="Andamento storico della cassa per squadra"
+      >
+        <line
+          className="chart-axis"
+          x1={chart.left}
+          y1={chart.top}
+          x2={chart.left}
+          y2={chart.top + innerHeight}
+        />
+        <line
+          className="chart-axis"
+          x1={chart.left}
+          y1={chart.top + innerHeight}
+          x2={chart.left + innerWidth}
+          y2={chart.top + innerHeight}
+        />
+        {[0, 0.5, 1].map((tick) => {
+          const y = chart.top + innerHeight * tick;
+          return (
+            <line
+              className="chart-grid"
+              key={tick}
+              x1={chart.left}
+              y1={y}
+              x2={chart.left + innerWidth}
+              y2={y}
+            />
+          );
+        })}
+        <text className="chart-label y-label" x="4" y={chart.top + 4}>
+          {money(rawMaxCash)}
+        </text>
+        <text className="chart-label y-label" x="4" y={chart.top + innerHeight}>
+          {money(rawMinCash)}
+        </text>
+        <text className="chart-label" x={chart.left} y={chart.height - 5}>
+          Q0
+        </text>
+        <text
+          className="chart-label end"
+          x={chart.left + innerWidth}
+          y={chart.height - 5}
+        >
+          Q{maxQuarter}
+        </text>
+        {series.map((item) => {
+          const path = item.points
+            .map((point, index) => {
+              const command = index === 0 ? "M" : "L";
+              return `${command}${xFor(point.quarter).toFixed(1)},${yFor(point.cash).toFixed(1)}`;
+            })
+            .join(" ");
+          const lastPoint = item.points[item.points.length - 1];
+
+          return (
+            <g key={item.playerId}>
+              <path
+                className="cash-line"
+                d={path}
+                style={{ stroke: item.color }}
+              />
+              <circle
+                className="cash-point"
+                cx={xFor(lastPoint.quarter)}
+                cy={yFor(lastPoint.cash)}
+                r="2.8"
+                style={{ fill: item.color }}
+              />
+            </g>
+          );
+        })}
+      </svg>
+      <div className="cash-history-legend">
+        {series.map((item) => (
+          <span key={item.playerId}>
+            <i style={{ background: item.color }} />
+            {item.nickname}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DecisionPanel({
   state,
   decision,
@@ -945,6 +1380,7 @@ function DecisionPanel({
   projectedCash,
   isSubmitted,
   busy,
+  turnRemainingSeconds,
   purchaseResearch,
   submit,
 }: {
@@ -959,6 +1395,7 @@ function DecisionPanel({
   projectedCash: number;
   isSubmitted: boolean;
   busy: boolean;
+  turnRemainingSeconds: number | null;
   purchaseResearch: (researchType: string) => void;
   submit: () => void;
 }) {
@@ -989,6 +1426,16 @@ function DecisionPanel({
           </strong>
         </small>
       </div>
+
+      {turnRemainingSeconds !== null ? (
+        <div className={`timer-strip ${turnRemainingSeconds <= 30 ? "danger" : ""}`}>
+          <span>Tempo rimasto</span>
+          <strong>{formatCountdown(turnRemainingSeconds)}</strong>
+          <small>
+            A zero, il sistema invia automaticamente le opzioni selezionate.
+          </small>
+        </div>
+      ) : null}
 
       <fieldset disabled={isSubmitted || busy}>
         <label>

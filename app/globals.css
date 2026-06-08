@@ -527,7 +527,8 @@ button:focus-visible {
 }
 
 .signal,
-.budget-strip {
+.budget-strip,
+.timer-strip {
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -539,7 +540,8 @@ button:focus-visible {
 }
 
 .signal strong,
-.budget-strip strong {
+.budget-strip strong,
+.timer-strip strong {
   font-size: 1.28rem;
 }
 
@@ -593,10 +595,128 @@ button:focus-visible {
   font-weight: 850;
 }
 
-.budget-strip {
+.cash-history {
+  background: #f8fbf8;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px;
+}
+
+.cash-history.empty {
+  background: #eef7f2;
+}
+
+.cash-history-header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.cash-history span,
+.cash-history-header span {
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.cash-history small,
+.cash-history-header small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.cash-history-chart {
+  display: block;
+  height: auto;
+  overflow: visible;
+  width: 100%;
+}
+
+.chart-axis {
+  stroke: #aebbb4;
+  stroke-width: 1;
+}
+
+.chart-grid {
+  stroke: #dfe7e2;
+  stroke-dasharray: 3 4;
+  stroke-width: 1;
+}
+
+.chart-label {
+  fill: var(--muted);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.chart-label.end {
+  text-anchor: end;
+}
+
+.y-label {
+  font-size: 8px;
+}
+
+.cash-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.6;
+}
+
+.cash-point {
+  stroke: #fff;
+  stroke-width: 1.2;
+}
+
+.cash-history-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+.cash-history-legend span {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  gap: 5px;
+  max-width: 100%;
+}
+
+.cash-history-legend i {
+  border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 auto;
+  height: 8px;
+  width: 8px;
+}
+
+.budget-strip,
+.timer-strip {
   background: #fff9dc;
   box-shadow: none;
   min-height: auto;
+}
+
+.timer-strip {
+  background: #eef7f2;
+  border-color: #c8e0d1;
+}
+
+.timer-strip.danger {
+  background: #fff0f1;
+  border-color: #efb8bf;
+}
+
+.timer-strip small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
 }
 
 .danger {
