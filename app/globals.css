@@ -62,6 +62,187 @@ fieldset:disabled {
   opacity: 0.62;
 }
 
+.splash-shell {
+  display: grid;
+  gap: 26px;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding: 34px 22px 28px;
+  width: min(1180px, 100%);
+}
+
+.splash-hero {
+  align-items: center;
+  display: grid;
+  gap: 42px;
+  grid-template-columns: minmax(0, 0.86fr) minmax(420px, 1.14fr);
+}
+
+.splash-copy {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.splash-copy .eyebrow {
+  margin: 0;
+}
+
+.splash-copy h1 {
+  font-size: clamp(3.7rem, 8vw, 7.2rem);
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 0.9;
+  margin: 0;
+  max-width: 8ch;
+}
+
+.splash-lede {
+  color: #334052;
+  font-size: 1.16rem;
+  line-height: 1.58;
+  margin: 0;
+  max-width: 620px;
+}
+
+.splash-actions {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 8px;
+  max-width: 640px;
+}
+
+.splash-role {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  display: grid;
+  gap: 6px;
+  min-height: 112px;
+  padding: 18px;
+  text-align: left;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.splash-role span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 820;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.splash-role strong {
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+
+.splash-role-primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+
+.splash-role-primary span {
+  color: #f3cdd0;
+}
+
+.splash-role:hover {
+  border-color: #aebdb4;
+  box-shadow: 0 20px 55px rgba(33, 48, 38, 0.16);
+  transform: translateY(-3px);
+}
+
+.splash-guide-link {
+  color: var(--blue);
+  font-weight: 850;
+  justify-self: start;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+}
+
+.splash-preview {
+  min-width: 0;
+  position: relative;
+}
+
+.splash-preview-frame {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 28px 90px rgba(33, 48, 38, 0.18);
+  overflow: hidden;
+  transform: rotate(1.4deg);
+}
+
+.splash-preview-frame img {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.splash-preview-badge {
+  background: #fff4c5;
+  border: 1px solid #e2ba3e;
+  border-radius: 999px;
+  bottom: -15px;
+  box-shadow: 0 12px 32px rgba(33, 48, 38, 0.12);
+  color: #533a00;
+  font-size: 0.86rem;
+  font-weight: 850;
+  left: 22px;
+  padding: 10px 14px;
+  position: absolute;
+  white-space: nowrap;
+}
+
+.splash-how {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.splash-how article {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 34px rgba(33, 48, 38, 0.08);
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.splash-how span {
+  align-items: center;
+  background: var(--mint);
+  border: 1px solid #c8e0d1;
+  border-radius: 999px;
+  color: #315943;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 900;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.splash-how h2 {
+  font-size: 1rem;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.splash-how p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
 .game-shell {
   min-height: 100vh;
   padding: 18px;
@@ -1300,6 +1481,27 @@ input[type="range"] {
 }
 
 @media (max-width: 1180px) {
+  .splash-shell {
+    width: min(940px, 100%);
+  }
+
+  .splash-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .splash-copy h1 {
+    max-width: 12ch;
+  }
+
+  .splash-preview {
+    margin: 0 auto;
+    width: min(760px, 100%);
+  }
+
+  .splash-how {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .workspace {
     grid-template-columns: 260px minmax(420px, 1fr);
   }
@@ -1310,6 +1512,54 @@ input[type="range"] {
 }
 
 @media (max-width: 820px) {
+  .splash-shell {
+    gap: 22px;
+    padding: 24px 14px;
+  }
+
+  .splash-hero {
+    gap: 24px;
+  }
+
+  .splash-copy {
+    gap: 14px;
+  }
+
+  .splash-copy h1 {
+    font-size: clamp(3rem, 16vw, 4.6rem);
+    max-width: 9ch;
+  }
+
+  .splash-lede {
+    font-size: 1rem;
+  }
+
+  .splash-actions,
+  .splash-how {
+    grid-template-columns: 1fr;
+  }
+
+  .splash-role {
+    min-height: 92px;
+    padding: 16px;
+  }
+
+  .splash-role strong {
+    font-size: 1.22rem;
+  }
+
+  .splash-preview-frame {
+    transform: none;
+  }
+
+  .splash-preview-badge {
+    bottom: 10px;
+    font-size: 0.78rem;
+    left: 10px;
+    max-width: calc(100% - 20px);
+    white-space: normal;
+  }
+
   .game-shell {
     padding: 12px;
   }

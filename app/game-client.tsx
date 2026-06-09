@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   firstQuarterOfYear,
@@ -381,12 +382,7 @@ function buildCashHistory(state: ApiState): CashHistorySeries[] {
 
 function readStoredSession() {
   if (typeof window === "undefined") {
-    return {
-      mode: "instructor" as const,
-      roomCode: "",
-      hostToken: "",
-      playerToken: "",
-    };
+    return emptySession();
   }
 
   const roomCode = localStorage.getItem("ice-room-code") ?? "";
@@ -401,8 +397,18 @@ function readStoredSession() {
   return { mode, roomCode, hostToken, playerToken };
 }
 
+function emptySession() {
+  return {
+    mode: "instructor" as const,
+    roomCode: "",
+    hostToken: "",
+    playerToken: "",
+  };
+}
+
 export default function GameClient() {
-  const [initialSession] = useState(readStoredSession);
+  const [initialSession] = useState(emptySession);
+  const [showSplash, setShowSplash] = useState(true);
   const [mode, setMode] = useState<"instructor" | "player">(
     initialSession.mode
   );
@@ -425,6 +431,20 @@ export default function GameClient() {
   const skipDraftSaveKeyRef = useRef("");
   const autoSubmitKeyRef = useRef("");
   const submitInFlightRef = useRef(false);
+
+  useEffect(() => {
+    const restoreTimer = window.setTimeout(() => {
+      const storedSession = readStoredSession();
+      setMode(storedSession.mode);
+      setJoinCode(storedSession.roomCode);
+      setRoomCode(storedSession.roomCode);
+      setHostToken(storedSession.hostToken);
+      setPlayerToken(storedSession.playerToken);
+      setShowSplash(!storedSession.roomCode);
+    }, 0);
+
+    return () => window.clearTimeout(restoreTimer);
+  }, []);
 
   const loadState = useCallback(async () => {
     if (!roomCode) return;
@@ -653,10 +673,21 @@ export default function GameClient() {
     localStorage.removeItem("ice-player-token");
     localStorage.removeItem("ice-mode");
     setRoomCode("");
+    setJoinCode("");
     setHostToken("");
     setPlayerToken("");
     setState(null);
     setError("");
+    setShowSplash(true);
+  }
+
+  function enterAs(selectedMode: "instructor" | "player") {
+    setMode(selectedMode);
+    setShowSplash(false);
+  }
+
+  if (showSplash) {
+    return <WelcomeSplash enterAs={enterAs} />;
   }
 
   return (
@@ -864,6 +895,88 @@ export default function GameClient() {
             </div>
           )}
         </aside>
+      </section>
+    </main>
+  );
+}
+
+function WelcomeSplash({
+  enterAs,
+}: {
+  enterAs: (mode: "instructor" | "player") => void;
+}) {
+  return (
+    <main className="splash-shell">
+      <section className="splash-hero" aria-labelledby="splash-title">
+        <div className="splash-copy">
+          <p className="eyebrow">Simulatore di marketing per la classe</p>
+          <h1 id="splash-title">Ice Cream Empire</h1>
+          <p className="splash-lede">
+            Una sfida multiplayer in cui la classe gestisce gelaterie rivali,
+            investe sulle 4P e scopre trimestre dopo trimestre cosa funziona nel
+            mercato.
+          </p>
+
+          <div className="splash-actions" aria-label="Scegli come entrare">
+            <button
+              className="splash-role splash-role-primary"
+              onClick={() => enterAs("instructor")}
+              type="button"
+            >
+              <span>Creo e conduco la partita</span>
+              <strong>Sono professore</strong>
+            </button>
+            <button
+              className="splash-role"
+              onClick={() => enterAs("player")}
+              type="button"
+            >
+              <span>Ho un codice stanza</span>
+              <strong>Sono una squadra</strong>
+            </button>
+          </div>
+
+          <a className="splash-guide-link" href="/guida.html">
+            Apri la guida rapida
+          </a>
+        </div>
+
+        <div className="splash-preview" aria-label="Anteprima del gioco">
+          <div className="splash-preview-frame">
+            <Image
+              alt="Anteprima della plancia di Ice Cream Empire con mappa, classifica e decisioni trimestrali"
+              src="/screenshot.jpeg"
+              width={1200}
+              height={750}
+              priority
+              unoptimized
+            />
+          </div>
+          <div className="splash-preview-badge">12 trimestri · 4P · squadre rivali</div>
+        </div>
+      </section>
+
+      <section className="splash-how" aria-label="Come funziona">
+        <article>
+          <span>1</span>
+          <h2>Il professore crea la stanza</h2>
+          <p>Condivide il codice, avvia i trimestri e guida la discussione sui risultati.</p>
+        </article>
+        <article>
+          <span>2</span>
+          <h2>Le squadre decidono</h2>
+          <p>Scelgono prodotto, prezzo, quartiere e budget pubblicitari per ogni turno.</p>
+        </article>
+        <article>
+          <span>3</span>
+          <h2>Il mercato reagisce</h2>
+          <p>Stagioni, eventi, ricerche e concorrenza cambiano domanda e profitto.</p>
+        </article>
+        <article>
+          <span>4</span>
+          <h2>Vince chi gestisce meglio la cassa</h2>
+          <p>Dopo 3 anni simulati, la classifica mostra la gelateria più solida.</p>
+        </article>
       </section>
     </main>
   );
