@@ -22,7 +22,7 @@ type ApiState = {
     serverNow: string;
   };
   isHost: boolean;
-  currentPlayer: null | { id: string; nickname: string; token: string; cash: number };
+  currentPlayer: null | { id: string; nickname: string; cash: number };
   players: Array<{
     id: string;
     nickname: string;
@@ -448,10 +448,15 @@ export default function GameClient() {
 
   const loadState = useCallback(async () => {
     if (!roomCode) return;
-    const params = new URLSearchParams({ roomCode });
-    if (mode === "instructor" && hostToken) params.set("hostToken", hostToken);
-    if (mode === "player" && playerToken) params.set("playerToken", playerToken);
-    const response = await fetch(`/api/game?${params.toString()}`);
+    const payload: Record<string, unknown> = { action: "getState", roomCode };
+    if (mode === "instructor" && hostToken) payload.hostToken = hostToken;
+    if (mode === "player" && playerToken) payload.playerToken = playerToken;
+    const response = await fetch("/api/game", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
     const data = await response.json();
     if (data.error) {
       setError(data.error);
@@ -464,15 +469,29 @@ export default function GameClient() {
     }
   }, [hostToken, mode, playerToken, roomCode]);
 
+  const pollIntervalMs = state?.room.status === "active" ? 5000 : 9000;
+
   useEffect(() => {
     if (!roomCode) return undefined;
-    const firstPoll = window.setTimeout(() => void loadState(), 0);
-    const interval = window.setInterval(() => void loadState(), 3200);
+    const poll = () => {
+      if (document.visibilityState !== "hidden") {
+        void loadState();
+      }
+    };
+    const firstPoll = window.setTimeout(poll, 0);
+    const interval = window.setInterval(poll, pollIntervalMs);
+    const resumePoll = () => {
+      if (document.visibilityState === "visible") {
+        void loadState();
+      }
+    };
+    document.addEventListener("visibilitychange", resumePoll);
     return () => {
       window.clearTimeout(firstPoll);
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", resumePoll);
     };
-  }, [loadState, roomCode]);
+  }, [loadState, pollIntervalMs, roomCode]);
 
   const api = useCallback(async (payload: Record<string, unknown>) => {
     setBusy(true);
@@ -482,6 +501,7 @@ export default function GameClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        cache: "no-store",
       });
       const data = await response.json();
       if (data.error) {

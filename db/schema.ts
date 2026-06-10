@@ -148,3 +148,18 @@ export const quarterResults = sqliteTable(
     ),
   })
 );
+
+export const roomCreationLimits = sqliteTable(
+  "room_creation_limits",
+  {
+    ipHash: text("ip_hash").primaryKey(),
+    hourStart: text("hour_start").notNull(),
+    hourCount: integer("hour_count").notNull().default(0),
+    dayStart: text("day_start").notNull(),
+    dayCount: integer("day_count").notNull().default(0),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    updatedIdx: index("room_creation_limits_updated_idx").on(table.updatedAt),
+  })
+);

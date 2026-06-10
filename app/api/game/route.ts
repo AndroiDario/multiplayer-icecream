@@ -1,11 +1,12 @@
-import { and, desc, eq } from "drizzle-orm";
-import { getD1, getDb } from "@/db";
+import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { getDb } from "@/db";
 import {
   marketSnapshots,
   players,
   quarterDecisions,
   quarterResults,
   researchPurchases,
+  roomCreationLimits,
   rooms,
 } from "@/db/schema";
 import {
@@ -49,11 +50,24 @@ type DecisionRow = typeof quarterDecisions.$inferSelect;
 type ResultRow = typeof quarterResults.$inferSelect;
 
 const TURN_DURATION_SECONDS = 5 * 60;
+const MAX_BODY_BYTES = 20 * 1024;
+const MAX_ROOM_CREATES_PER_HOUR = 8;
+const MAX_ROOM_CREATES_PER_DAY = 40;
+const ROOM_TTL_DAYS = 14;
+const CLEANUP_INTERVAL_MS = 10 * 60 * 1000;
+const CLEANUP_BATCH_SIZE = 25;
+const SECURITY_HEADERS = {
+  "Cache-Control": "no-store",
+  "Permissions-Policy": "camera=(), geolocation=(), microphone=()",
+  "Referrer-Policy": "no-referrer",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+};
 
-let schemaReady: Promise<void> | null = null;
+let lastCleanupAt = 0;
 
 function json(data: unknown, status = 200) {
-  return Response.json(data, { status });
+  return Response.json(data, { headers: SECURITY_HEADERS, status });
 }
 
 function normalizeCode(code?: string) {
@@ -94,17 +108,21 @@ function routeError(error: unknown) {
 
 export async function GET(request: Request) {
   try {
-    await ensureGameSchema();
     const url = new URL(request.url);
     const roomCode = normalizeCode(url.searchParams.get("roomCode") ?? undefined);
-    const playerToken = url.searchParams.get("playerToken") ?? undefined;
-    const hostToken = url.searchParams.get("hostToken") ?? undefined;
 
     if (!roomCode) {
       return json({ error: "Serve il codice della stanza." }, 400);
     }
 
-    return json(await getRoomState(roomCode, playerToken, hostToken));
+    if (url.searchParams.has("playerToken") || url.searchParams.has("hostToken")) {
+      return json(
+        { error: "Per sicurezza i token non si inviano piu nell'URL." },
+        400
+      );
+    }
+
+    return json(await getRoomState(roomCode));
   } catch (error) {
     return json({ error: routeError(error) }, 500);
   }
@@ -112,10 +130,21 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    await ensureGameSchema();
-    const payload = (await request.json()) as ActionPayload;
+    const payload = await readActionPayload(request);
+
+    if (payload.action === "getState") {
+      return json(
+        await getRoomState(payload.roomCode, payload.playerToken, payload.hostToken)
+      );
+    }
 
     if (payload.action === "createRoom") {
+      const quota = await enforceRoomCreationLimit(request);
+      if (quota.error) {
+        return json({ error: quota.error }, 429);
+      }
+
+      await cleanupExpiredRooms();
       return json(await createRoom(payload.instructorName));
     }
 
@@ -150,106 +179,165 @@ export async function POST(request: Request) {
 
     return json({ error: "Azione non riconosciuta." }, 400);
   } catch (error) {
+    if (error instanceof PayloadError) {
+      return json({ error: error.message }, error.status);
+    }
+
     return json({ error: routeError(error) }, 500);
   }
 }
 
-async function ensureGameSchema() {
-  if (!schemaReady) {
-    const d1 = getD1();
-    schemaReady = d1
-      .batch([
-        d1.prepare(`CREATE TABLE IF NOT EXISTS rooms (
-          id text PRIMARY KEY NOT NULL,
-          code text NOT NULL UNIQUE,
-          host_name text NOT NULL,
-          host_token text NOT NULL,
-          seed integer NOT NULL,
-          status text DEFAULT 'lobby' NOT NULL,
-          current_quarter integer DEFAULT 0 NOT NULL,
-          created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-          updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
-        )`),
-        d1.prepare(`CREATE INDEX IF NOT EXISTS rooms_code_idx ON rooms (code)`),
-        d1.prepare(`CREATE TABLE IF NOT EXISTS players (
-          id text PRIMARY KEY NOT NULL,
-          room_id text NOT NULL REFERENCES rooms(id),
-          nickname text NOT NULL,
-          token text NOT NULL UNIQUE,
-          cumulative_revenue real DEFAULT 0 NOT NULL,
-          cumulative_profit real DEFAULT 0 NOT NULL,
-          cumulative_satisfaction real DEFAULT 0 NOT NULL,
-          joined_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
-        )`),
-        d1.prepare(`CREATE INDEX IF NOT EXISTS players_room_idx ON players (room_id)`),
-        d1.prepare(`CREATE INDEX IF NOT EXISTS players_token_idx ON players (token)`),
-        d1.prepare(`CREATE TABLE IF NOT EXISTS market_snapshots (
-          id text PRIMARY KEY NOT NULL,
-          room_id text NOT NULL REFERENCES rooms(id),
-          quarter integer NOT NULL,
-          data text NOT NULL,
-          created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
-        )`),
-        d1.prepare(
-          `CREATE INDEX IF NOT EXISTS market_room_quarter_idx ON market_snapshots (room_id, quarter)`
-        ),
-        d1.prepare(`CREATE TABLE IF NOT EXISTS research_purchases (
-          id text PRIMARY KEY NOT NULL,
-          room_id text NOT NULL REFERENCES rooms(id),
-          player_id text NOT NULL REFERENCES players(id),
-          quarter integer NOT NULL,
-          type text NOT NULL,
-          cost integer NOT NULL,
-          created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
-        )`),
-        d1.prepare(
-          `CREATE INDEX IF NOT EXISTS research_player_quarter_idx ON research_purchases (player_id, quarter)`
-        ),
-        d1.prepare(`CREATE TABLE IF NOT EXISTS quarter_decisions (
-          id text PRIMARY KEY NOT NULL,
-          room_id text NOT NULL REFERENCES rooms(id),
-          player_id text NOT NULL REFERENCES players(id),
-          quarter integer NOT NULL,
-          product text NOT NULL,
-          price_tier text NOT NULL,
-          district text NOT NULL,
-          google_budget integer NOT NULL,
-          meta_budget integer NOT NULL,
-          influencer_budget integer NOT NULL,
-          research_spend integer NOT NULL,
-          auto_submitted integer DEFAULT false NOT NULL,
-          submitted_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
-        )`),
-        d1.prepare(
-          `CREATE INDEX IF NOT EXISTS decisions_room_quarter_idx ON quarter_decisions (room_id, quarter)`
-        ),
-        d1.prepare(
-          `CREATE INDEX IF NOT EXISTS decisions_player_quarter_idx ON quarter_decisions (player_id, quarter)`
-        ),
-        d1.prepare(`CREATE TABLE IF NOT EXISTS quarter_results (
-          id text PRIMARY KEY NOT NULL,
-          room_id text NOT NULL REFERENCES rooms(id),
-          player_id text NOT NULL REFERENCES players(id),
-          quarter integer NOT NULL,
-          revenue real NOT NULL,
-          profit real NOT NULL,
-          units integer NOT NULL,
-          market_share real NOT NULL,
-          satisfaction real NOT NULL,
-          data text NOT NULL,
-          created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
-        )`),
-        d1.prepare(
-          `CREATE INDEX IF NOT EXISTS results_room_quarter_idx ON quarter_results (room_id, quarter)`
-        ),
-        d1.prepare(
-          `CREATE INDEX IF NOT EXISTS results_player_quarter_idx ON quarter_results (player_id, quarter)`
-        ),
-      ])
-      .then(() => undefined);
+export async function OPTIONS() {
+  return new Response(null, {
+    headers: { ...SECURITY_HEADERS, Allow: "GET, POST, OPTIONS" },
+    status: 204,
+  });
+}
+
+export async function DELETE() {
+  return methodNotAllowed();
+}
+
+export async function PATCH() {
+  return methodNotAllowed();
+}
+
+export async function PUT() {
+  return methodNotAllowed();
+}
+
+function methodNotAllowed() {
+  return json({ error: "Metodo non consentito." }, 405);
+}
+
+class PayloadError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+  }
+}
+
+async function readActionPayload(request: Request): Promise<ActionPayload> {
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+    throw new PayloadError("La richiesta e troppo grande.", 413);
   }
 
-  return schemaReady;
+  const text = await request.text();
+  if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES) {
+    throw new PayloadError("La richiesta e troppo grande.", 413);
+  }
+
+  if (!text.trim()) {
+    throw new PayloadError("Richiesta JSON mancante.", 400);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new PayloadError("JSON non valido.", 400);
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new PayloadError("Richiesta non valida.", 400);
+  }
+
+  return parsed as ActionPayload;
+}
+
+async function enforceRoomCreationLimit(request: Request) {
+  const db = getDb();
+  const ipHash = await clientHash(request);
+  const nowDate = new Date();
+  const hourStart = `${nowDate.toISOString().slice(0, 13)}:00:00.000Z`;
+  const dayStart = `${nowDate.toISOString().slice(0, 10)}T00:00:00.000Z`;
+  const [existing] = await db
+    .select()
+    .from(roomCreationLimits)
+    .where(eq(roomCreationLimits.ipHash, ipHash))
+    .limit(1);
+
+  const hourCount = existing?.hourStart === hourStart ? existing.hourCount : 0;
+  const dayCount = existing?.dayStart === dayStart ? existing.dayCount : 0;
+
+  if (hourCount >= MAX_ROOM_CREATES_PER_HOUR) {
+    return {
+      error:
+        "Troppe stanze create da questa connessione. Riprova tra circa un'ora.",
+    };
+  }
+
+  if (dayCount >= MAX_ROOM_CREATES_PER_DAY) {
+    return {
+      error:
+        "Troppe stanze create oggi da questa connessione. Riprova domani.",
+    };
+  }
+
+  const values = {
+    ipHash,
+    hourStart,
+    hourCount: hourCount + 1,
+    dayStart,
+    dayCount: dayCount + 1,
+    updatedAt: now(),
+  };
+
+  if (existing) {
+    await db
+      .update(roomCreationLimits)
+      .set(values)
+      .where(eq(roomCreationLimits.ipHash, ipHash));
+  } else {
+    await db.insert(roomCreationLimits).values(values);
+  }
+
+  return {};
+}
+
+async function clientHash(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const ip =
+    request.headers.get("cf-connecting-ip") ??
+    forwardedFor ??
+    request.headers.get("x-real-ip") ??
+    "unknown";
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(ip)
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function cleanupExpiredRooms() {
+  const nowMs = Date.now();
+  if (nowMs - lastCleanupAt < CLEANUP_INTERVAL_MS) return;
+  lastCleanupAt = nowMs;
+
+  const cutoff = new Date(nowMs - ROOM_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const db = getDb();
+  const expiredRooms = await db
+    .select({ id: rooms.id })
+    .from(rooms)
+    .where(lt(rooms.updatedAt, cutoff))
+    .limit(CLEANUP_BATCH_SIZE);
+  const roomIds = expiredRooms.map((room) => room.id);
+
+  if (roomIds.length === 0) return;
+
+  await db.delete(quarterResults).where(inArray(quarterResults.roomId, roomIds));
+  await db.delete(quarterDecisions).where(inArray(quarterDecisions.roomId, roomIds));
+  await db
+    .delete(researchPurchases)
+    .where(inArray(researchPurchases.roomId, roomIds));
+  await db.delete(marketSnapshots).where(inArray(marketSnapshots.roomId, roomIds));
+  await db.delete(players).where(inArray(players.roomId, roomIds));
+  await db.delete(rooms).where(inArray(rooms.id, roomIds));
 }
 
 async function createRoom(instructorName?: string) {
@@ -640,7 +728,6 @@ async function getRoomState(
       ? {
           id: player.id,
           nickname: player.nickname,
-          token: player.token,
           cash: STARTING_CASH + player.cumulativeProfit,
         }
       : null,

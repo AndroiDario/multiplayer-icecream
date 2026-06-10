@@ -263,12 +263,26 @@ di autorizzazione e basato sui token della stanza.
 Il progetto e predisposto per Cloudflare Workers tramite vinext.
 
 - `worker/index.ts` delega le richieste al router vinext e gestisce
-  l'endpoint di ottimizzazione immagini `/_vinext/image`.
+  il blocco dell'endpoint dinamico `/_vinext/image`, disabilitato per ridurre
+  superficie e costi.
 - `.openai/hosting.json` dichiara il binding D1 `DB`.
 - `vite.config.ts` configura il binding locale per D1 e l'eventuale R2.
 
 In ambienti Cloudflare reali, assicurarsi che la binding `DB` punti al database
-D1 corretto.
+D1 corretto e applicare le migrazioni in `drizzle/` prima di aprire il gioco al
+pubblico.
+
+## Checklist Sicurezza Prima Del Lancio
+
+- Revoca e rigenera qualunque API token, private key o credenziale Cloudflare
+  usata durante lo sviluppo.
+- Conserva i segreti con Cloudflare Secrets (`wrangler secret put`), non in file
+  versionati o variabili pubbliche.
+- Abilita GitHub secret scanning e push protection sul repository pubblico.
+- Esegui una scansione della history con `gitleaks` o `trufflehog`.
+- Configura una regola Cloudflare WAF/rate limiting per `/api/game*`.
+- Controlla le metriche Worker e D1 dopo la pubblicazione, soprattutto nei primi
+  giorni di condivisione pubblica.
 
 ## Sviluppo
 
@@ -282,7 +296,7 @@ Quando si modifica il gioco, i punti piu importanti sono:
 - `db/schema.ts` per cambiare persistenza e struttura dati.
 
 Se cambi `db/schema.ts`, genera una migrazione con `npm run db:generate` e
-verifica che `ensureGameSchema()` resti coerente con lo schema.
+applicala al database D1 prima del deploy.
 
 ## Comandi Utili
 
