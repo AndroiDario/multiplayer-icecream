@@ -243,6 +243,33 @@ fieldset:disabled {
   margin: 0;
 }
 
+.splash-footer {
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  display: grid;
+  font-size: 0.82rem;
+  gap: 4px;
+  line-height: 1.5;
+  padding-top: 16px;
+  text-align: center;
+}
+
+.splash-footer p {
+  margin: 0;
+}
+
+.splash-footer a {
+  color: var(--muted);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.splash-footer a:hover {
+  color: var(--ink);
+}
+
 .game-shell {
   min-height: 100vh;
   padding: 18px;

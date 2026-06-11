@@ -998,6 +998,27 @@ function WelcomeSplash({
           <p>Dopo 3 anni simulati, la classifica mostra la gelateria più solida.</p>
         </article>
       </section>
+
+      <footer className="splash-footer">
+        <p>
+          Ice Cream Empire è uno strumento didattico gratuito, liberamente
+          utilizzabile in classe.
+        </p>
+        <p>
+          Creato da{" "}
+          <a href="https://veda.consulting" target="_blank" rel="noopener">
+            VEDA
+          </a>
+          {" · "}Ispirato allo storico gioco{" "}
+          <a
+            href="https://www.unibocconi.it/it/news/ice-cream-empire-il-gioco-bocconi-aspiranti-imprenditori"
+            target="_blank"
+            rel="noopener"
+          >
+            Ice Cream Empire dell&apos;Università Bocconi
+          </a>
+        </p>
+      </footer>
     </main>
   );
 }
