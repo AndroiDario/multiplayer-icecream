@@ -1,5 +1,15 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import handler from "vinext/server/app-router-entry";
+import { SITE_URL } from "../lib/site";
+
+const CANONICAL_HOST = new URL(SITE_URL).hostname;
+
+// Hostnames that serve duplicate content and must consolidate onto the
+// canonical domain. Versioned *.workers.dev preview URLs are left alone.
+const REDIRECT_HOSTS = new Set([
+  "icecreamempire.it",
+  "multiplayer-icecream.dario-6b7.workers.dev",
+]);
 
 interface Env {
   ASSETS: Fetcher;
@@ -27,6 +37,11 @@ interface ExecutionContext {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    if (REDIRECT_HOSTS.has(url.hostname)) {
+      url.hostname = CANONICAL_HOST;
+      return Response.redirect(url.toString(), 301);
+    }
 
     if (url.pathname === "/_vinext/image") {
       return new Response("Image optimization is disabled.", {
