@@ -296,6 +296,10 @@ function draftStorageKey(roomCode: string, playerToken: string, quarter: number)
   return `ice-decision-draft:${roomCode}:${playerToken}:${quarter}`;
 }
 
+function openCookiePreferences() {
+  window.dispatchEvent(new Event("icecreamempire:open-cookie-preferences"));
+}
+
 function isDecision(value: unknown): value is Decision {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
@@ -729,6 +733,13 @@ export default function GameClient() {
           <button className="ghost-button" onClick={resetSession} type="button">
             Nuova sessione
           </button>
+          <button
+            className="ghost-button"
+            onClick={openCookiePreferences}
+            type="button"
+          >
+            Preferenze cookie
+          </button>
         </div>
       </header>
 
@@ -1017,6 +1028,12 @@ function WelcomeSplash({
           >
             Ice Cream Empire dell&apos;Università Bocconi
           </a>
+        </p>
+        <p className="splash-footer-links">
+          <a href="/cookie-policy">Cookie policy</a>
+          <button onClick={openCookiePreferences} type="button">
+            Preferenze cookie
+          </button>
         </p>
       </footer>
     </main>
